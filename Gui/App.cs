@@ -246,12 +246,3 @@ public sealed class App : IDisposable
         mapEditor!.Text = text;
     }
 }
-
-internal class Program
-{
-    static void Main()
-    {
-        using App app = new();
-        app.Run();
-    }
-}
