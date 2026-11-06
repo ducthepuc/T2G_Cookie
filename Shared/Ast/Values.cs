@@ -3,7 +3,7 @@ namespace T2G_Cookie.Shared.Ast;
 public abstract record class Value;
 public abstract record SimpleValue : Value;
 
-public record class Literal(int value) : SimpleValue;
+public record class Literal(long value) : SimpleValue;
 public record class LiteralBool(bool value) : SimpleValue;
 public record class Variable(string variable) : SimpleValue;
 
