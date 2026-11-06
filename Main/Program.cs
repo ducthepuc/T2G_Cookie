@@ -18,9 +18,9 @@ internal class Program
         HandleInputFile handler = new HandleInputFile(fileName);
         
         using App app = new();
-        app.Run();
         app.SetMapContent(handler.Map);
         app.SetScriptContent(handler.Code);
+        app.Run();
     }
 }
 
@@ -61,10 +61,6 @@ public class HandleInputFile
             {
                 Code.Add(line);
             }
-        }
-        for (int i = 0; i < Code.Count; i++)
-        {
-            Console.WriteLine(Code[i]);
         }
         return Map;
     }
