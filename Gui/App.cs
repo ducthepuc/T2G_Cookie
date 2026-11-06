@@ -21,10 +21,11 @@ public sealed class App : IDisposable
 
     private Editor? codeEditor = null;
     private Editor? mapEditor = null;
-    private Editor? map = null;
+    private Label? map = null;
 
     private List<string>? _pendingScript;
     private char[,]? _pendingMap;
+    private string? _pendingMapText;
 
     public App()
     {
@@ -94,6 +95,7 @@ public sealed class App : IDisposable
                     sb.AppendLine();
             }
             mapEditor.Document = new(sb.ToString());
+            _pendingMapText = sb.ToString();
             _pendingMap = null;
         }
         mapTab.Add(mapEditor);
@@ -113,14 +115,17 @@ public sealed class App : IDisposable
 
         map = new()
         {
-            X = 0,
-            Y = 0,
-            Width = Dim.Fill(),
-            Height = Dim.Fill(),
-            ReadOnly = true,
-            WordWrap = true,
+            Text = "Bibibubu",
+            X = Pos.Center(),
+            Y = Pos.Center(),
         };
         mapFrame.Add(map);
+
+        if (_pendingMapText is { } pendingMapText)
+        {
+            DrawMap(pendingMapText);
+            _pendingMapText = null;
+        }
 
         FrameView controlsFrame = new()
         {
@@ -176,7 +181,7 @@ public sealed class App : IDisposable
 
         Button sendBtn = new()
         {
-            Text = "Send Code",
+            Text = "Execute Script",
             X = Pos.Right(editorTabs) + 2,
             Y = Pos.AnchorEnd()
         };
@@ -185,22 +190,20 @@ public sealed class App : IDisposable
 
         sendBtn.Accepting += (_, e) =>
         {
-            Editor current = ActiveEditor();
-            map.Text += current.Text + Environment.NewLine;
-            current.Text = string.Empty;
-            current.SetFocus();
+            codeEditor.Text = string.Empty;
+            codeEditor.SetFocus();
             e.Handled = true;
         };
 
         Button clearBtn = new()
         {
-            Text = "Clear Editor",
+            Text = "Set Map",
             X = Pos.Right(sendBtn) + 2,
             Y = Pos.Top(sendBtn)
         };
         clearBtn.Accepting += (_, e) =>
         {
-            map.Text = string.Empty;
+            DrawMap(mapEditor.Text);
             e.Handled = true;
         };
 
@@ -270,10 +273,40 @@ public sealed class App : IDisposable
                     sb.AppendLine();
             }
             mapEditor.Document = new(sb.ToString());
+            DrawMap(sb.ToString());
         }
         else
         {
             _pendingMap = map;
         }
+    }
+
+    private void DrawMap(string mapData)
+    {
+        if (map == null) return;
+        string newMap = "";
+        Dictionary<char, char> cells = new()
+        {
+            {'#', '■'},
+            {'.', '•'},
+            {'@', '⣿'},
+            {'>', '⇨'},
+            {'<', '⇦'},
+            {'^', '⇧'},
+            {'v', '⇩'}
+        };
+
+        foreach (char c in mapData)
+        {
+            if (cells.TryGetValue(c, out var replacement))
+                newMap += replacement;
+            else if (c == '\n' || c == '\r')
+                newMap += c;
+            else
+                newMap += c;
+            newMap += ' ';
+        }
+
+        map.Text = newMap;
     }
 }
