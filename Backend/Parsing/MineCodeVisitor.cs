@@ -8,11 +8,15 @@ public class MineCodeVisitor : MineCodeParserBaseVisitor<object>
 {
     public override Body VisitProgram([NotNull] MineCodeParser.ProgramContext context)
     {
+        if (context.instructions() == null) return new Body([]);
+
         return new Body(VisitInstructions(context.instructions()));
     }
 
     public override Instruction[] VisitInstructions([NotNull] MineCodeParser.InstructionsContext context)
     {
+        if (context.instruction() == null) return [];
+
         var instructions = context.instruction();
         var parsedInstructions = new Instruction[instructions.Length];
         for (int i = 0; i < instructions.Length; i++)

@@ -23,10 +23,10 @@ GT=22
 LEQ=23
 GEQ=24
 NEWLINE=25
-IDENTIFIER=26
-NUMBER=27
-TRUE=28
-FALSE=29
+TRUE=26
+FALSE=27
+IDENTIFIER=28
+NUMBER=29
 SPACE=30
 'set forward'=3
 'turn by'=4
@@ -50,6 +50,6 @@ SPACE=30
 '>'=22
 '<='=23
 '>='=24
-'true'=28
-'false'=29
+'true'=26
+'false'=27
 ' '=30

@@ -10,13 +10,17 @@ public static class MineCode
         AntlrInputStream stream = new AntlrInputStream(code);
 
         MineCodeLexer lexer = new MineCodeLexer(stream);
-        
+
         CommonTokenStream tokenStream = new CommonTokenStream(lexer);
 
         MineCodeParser parser = new MineCodeParser(tokenStream);
 
+        var root = parser.program();
+
+        System.Console.WriteLine(root.ToStringTree(parser));
+
         MineCodeVisitor visitor = new MineCodeVisitor();
 
-        return visitor.VisitProgram(parser.program());
+        return visitor.VisitProgram(root);
     }
 }

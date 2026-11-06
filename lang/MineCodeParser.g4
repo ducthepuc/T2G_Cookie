@@ -52,7 +52,7 @@ ifInstruction
     ;
 
 whileInstruction
-    : WHILE expression body
+    : WHILE expression NEWLINE body
     ;
 
 expression
