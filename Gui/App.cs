@@ -3,6 +3,8 @@ using Terminal.Gui.Input;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 using Terminal.Gui.Editor;
+using Terminal.Gui.Drawing;
+using System.Text;
 
 namespace T2G_Cookie.Gui;
 
@@ -11,6 +13,10 @@ public sealed class App : IDisposable
     private readonly IApplication _app;
     private Window? _window;
     private bool _disposed;
+
+    private Editor? codeEditor = null;
+    private Editor? mapEditor = null;
+    private Editor? map = null;
 
     public App()
     {
@@ -32,13 +38,13 @@ public sealed class App : IDisposable
 
         View codeTab = new()
         {
-            Title = "Script",              // tab header text
+            Title = "Script",
             Width = Dim.Fill(),
             Height = Dim.Fill(),
             CanFocus = true
         };
 
-        Editor codeEditor = new()
+        codeEditor = new()
         {
             X = 0,
             Y = 0,
@@ -56,7 +62,7 @@ public sealed class App : IDisposable
             CanFocus = true
         };
 
-        Editor mapEditor = new()
+        mapEditor = new()
         {
             X = 0,
             Y = 0,
@@ -79,7 +85,7 @@ public sealed class App : IDisposable
             Height = Dim.Percent(60)
         };
 
-        Editor map = new()
+        map = new()
         {
             X = 0,
             Y = 0,
@@ -211,6 +217,33 @@ public sealed class App : IDisposable
 
         _window?.Dispose();
         _app.Dispose();
+    }
+
+    public void SetScriptContent(List<string> code)
+    {
+        codeEditor!.Text = String.Join("\n", code);
+    }
+
+    public void SetMapContent(char[,] map)
+    {
+        StringBuilder sb = new StringBuilder();
+        int rows = map.GetLength(0);
+        int cols = map.GetLength(1);
+
+        for (int i = 0; i < rows; i++)
+        {
+            for (int j = 0; j < cols; j++)
+            {
+                sb.Append(map[i, j]);
+            }
+            if (i < rows - 1)
+            {
+                sb.AppendLine();
+            }
+        }
+
+        string text = sb.ToString();
+        mapEditor!.Text = text;
     }
 }
 
