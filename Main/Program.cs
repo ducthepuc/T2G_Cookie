@@ -1,5 +1,4 @@
-﻿using T2G_Cookie.Gui;
-namespace T2G_Cookie.Main;
+﻿namespace T2G_Cookie.Main;
 
 internal class Program
 {
@@ -16,11 +15,8 @@ internal class Program
             : args[0];
         Console.WriteLine(fileName);
         HandleInputFile handler = new HandleInputFile(fileName);
-        
-        using App app = new();
-        app.SetMapContent(handler.Map);
-        app.SetScriptContent(handler.Code);
-        app.Run();
+        Console.WriteLine($"Code lines: {handler.Code.Count}");
+        Console.WriteLine($"Map: {(handler.Map != null ? $"{handler.Map.GetLength(0)}x{handler.Map.GetLength(1)}" : "null")}");
     }
 }
 

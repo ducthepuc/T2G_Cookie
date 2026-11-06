@@ -1,6 +1,5 @@
 <Solution>
   <Project Path="Backend/Backend.csproj" />
-  <Project Path="Gui/Gui.csproj" />
   <Project Path="Main/Main.csproj" />
   <Project Path="Shared/Shared.csproj" />
 </Solution>
