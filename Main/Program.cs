@@ -1,4 +1,5 @@
-﻿namespace T2G_Cookie.Main;
+﻿using T2G_Cookie.Gui;
+namespace T2G_Cookie.Main;
 
 internal class Program
 {
@@ -15,14 +16,18 @@ internal class Program
             : args[0];
         Console.WriteLine(fileName);
         HandleInputFile handler = new HandleInputFile(fileName);
-        HandleInputFile.PrintMap();
+        
+        using App app = new();
+        app.Run();
+        app.SetMapContent(handler.Map);
+        app.SetScriptContent(handler.Code);
     }
 }
 
 public class HandleInputFile
 {
-    public static List<string> Code { get; private set; }
-    private static char[,]? Map { get; set; }
+    public List<string> Code { get; private set; }
+    public char[,]? Map { get; set; }
     public HandleInputFile(string fileName)
     {
         Code = [];
@@ -62,27 +67,5 @@ public class HandleInputFile
             Console.WriteLine(Code[i]);
         }
         return Map;
-    }
-    
-    public static void PrintMap()
-    {
-        if (Map is null)
-        {
-            Console.WriteLine("Map is not loaded.");
-            return;
-        }
-
-        int rows = Map.GetLength(0);
-        int cols = Map.GetLength(1);
-
-        for (int r = 0; r < rows; r++)
-        {
-            for (int c = 0; c < cols; c++)
-            {
-                char ch = Map[r, c];
-                Console.Write(ch == '\0' ? ' ' : ch);
-            }
-            Console.WriteLine();
-        }
     }
 }

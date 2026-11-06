@@ -8,6 +8,14 @@ using System.Text;
 
 namespace T2G_Cookie.Gui;
 
+internal class Program
+{
+    static void Main(string[] args)
+    {
+    
+    }
+}
+
 public sealed class App : IDisposable
 {
     private readonly IApplication _app;
