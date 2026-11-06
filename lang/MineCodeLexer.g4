@@ -50,10 +50,10 @@ GEQ           : '>=';
 NEWLINE       : ('\r'? '\n' ' '*)+ { HandleNewline(); } ;
 
 // Misc
-IDENTIFIER    : [a-zA-Z][a-zA-Z0-9]*;
-NUMBER        : [0-9]+;
-
 TRUE          : 'true';
 FALSE         : 'false';
+
+IDENTIFIER    : [a-zA-Z][a-zA-Z0-9]*;
+NUMBER        : [0-9]+;
 
 SPACE         : ' ' -> skip;

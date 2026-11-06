@@ -1,6 +1,6 @@
 namespace T2G_Cookie.Shared.Ast;
 
-public abstract record class Instruction();
+public abstract record class Instruction;
 public record class Body(Instruction[] Instructions);
 public record class StepInstruction(Value Value) : Instruction;
 public record class TurnInstruction(Value Value) : Instruction;
