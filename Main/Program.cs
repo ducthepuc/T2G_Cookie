@@ -18,9 +18,9 @@ internal class Program
         HandleInputFile handler = new HandleInputFile(fileName);
         
         using App app = new();
-        app.Run();
         app.SetMapContent(handler.Map);
         app.SetScriptContent(handler.Code);
+        app.Run();
     }
 }
 
@@ -37,15 +37,27 @@ public class HandleInputFile
     {
         string[] mapIdentifiers = ["#", ".", "@", ">", "<", "^", "v"];
         int currentRow = 0;
-        using FileStream fs = new(file, FileMode.Open);
+        using FileStream fs = new(file, FileMode.Open, FileAccess.Read);
         using StreamReader sr = new(fs);
         string[] nums = sr.ReadLine().Split(" ");
         int rows = int.Parse(nums[0]);
         int cols = int.Parse(nums[1]);
         Map = new char[rows,cols];
-        while (sr.EndOfStream == false)
+        
+        for (int r = 0; r < rows && !sr.EndOfStream; r++)
         {
-            string line = sr.ReadLine();
+            string? mapLine = sr.ReadLine();
+            if (mapLine == null) break;
+
+            for (int c = 0; c < mapLine.Length && c < cols; c++)
+            {
+                Map[r, c] = mapLine[c];
+            }
+        }
+        
+        while (!sr.EndOfStream)
+        {
+            string? line = sr.ReadLine();
             if (mapIdentifiers.Any(line.StartsWith))
             {
                 if (currentRow < Map.GetLength(0))

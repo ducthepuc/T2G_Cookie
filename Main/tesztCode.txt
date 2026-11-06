@@ -1,0 +1,20 @@
+3 15
+.....@..........
+.#############.
+.......@...>...
+set arany to isThere 2
+print arany
+set count to 0
+set fal to isThere 1
+set megy to not fal
+while megy
+ set arany to isThere 2
+ if arany
+  step forward 1
+  mine here
+  set count to count + 1
+ else
+  step forward 1
+ set fal to isThere 1
+ set megy to not fal
+print count
