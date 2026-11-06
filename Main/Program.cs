@@ -74,10 +74,6 @@ public class HandleInputFile
                 Code.Add(line);
             }
         }
-        for (int i = 0; i < Code.Count; i++)
-        {
-            Console.WriteLine(Code[i]);
-        }
         return Map;
     }
 }

@@ -10,10 +10,7 @@ namespace T2G_Cookie.Gui;
 
 internal class Program
 {
-    static void Main(string[] args)
-    {
-    
-    }
+    static void Main(string[] args) {}
 }
 
 public sealed class App : IDisposable
@@ -25,6 +22,9 @@ public sealed class App : IDisposable
     private Editor? codeEditor = null;
     private Editor? mapEditor = null;
     private Editor? map = null;
+
+    private List<string>? _pendingScript;
+    private char[,]? _pendingMap;
 
     public App()
     {
@@ -60,6 +60,11 @@ public sealed class App : IDisposable
             Height = Dim.Fill(),
             WordWrap = true
         };
+        if (_pendingScript != null)
+        {
+            codeEditor.Document = new(string.Join(Environment.NewLine, _pendingScript));
+            _pendingScript = null;
+        }
         codeTab.Add(codeEditor);
 
         View mapTab = new()
@@ -78,6 +83,19 @@ public sealed class App : IDisposable
             Height = Dim.Fill(),
             WordWrap = true
         };
+        if (_pendingMap is { } pendingMap)
+        {
+            StringBuilder sb = new();
+            for (int i = 0; i < pendingMap.GetLength(0); i++)
+            {
+                for (int j = 0; j < pendingMap.GetLength(1); j++)
+                    sb.Append(pendingMap[i, j]);
+                if (i < pendingMap.GetLength(0) - 1)
+                    sb.AppendLine();
+            }
+            mapEditor.Document = new(sb.ToString());
+            _pendingMap = null;
+        }
         mapTab.Add(mapEditor);
 
         editorTabs.Add(codeTab);
@@ -229,28 +247,33 @@ public sealed class App : IDisposable
 
     public void SetScriptContent(List<string> code)
     {
-        codeEditor!.Text = String.Join("\n", code);
+        if (codeEditor != null)
+        {
+            codeEditor.Document = new(string.Join(Environment.NewLine, code));
+        }
+        else
+        {
+            _pendingScript = code;
+        }
     }
 
     public void SetMapContent(char[,] map)
     {
-        StringBuilder sb = new StringBuilder();
-        int rows = map.GetLength(0);
-        int cols = map.GetLength(1);
-
-        for (int i = 0; i < rows; i++)
+        if (mapEditor != null)
         {
-            for (int j = 0; j < cols; j++)
+            StringBuilder sb = new();
+            for (int i = 0; i < map.GetLength(0); i++)
             {
-                sb.Append(map[i, j]);
+                for (int j = 0; j < map.GetLength(1); j++)
+                    sb.Append(map[i, j]);
+                if (i < map.GetLength(0) - 1)
+                    sb.AppendLine();
             }
-            if (i < rows - 1)
-            {
-                sb.AppendLine();
-            }
+            mapEditor.Document = new(sb.ToString());
         }
-
-        string text = sb.ToString();
-        mapEditor!.Text = text;
+        else
+        {
+            _pendingMap = map;
+        }
     }
 }
