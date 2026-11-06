@@ -1,0 +1,7 @@
+#!/bin/bash
+
+cd lang
+antlr4 MineCodeLexer.g4  MineCodeParser.g4 -Dlanguage=CSharp -visitor -o ../Backend/Parsing/lang
+cd ..
+
+echo Language generated uwu
