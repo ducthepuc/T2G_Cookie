@@ -95,6 +95,15 @@ static class AstConverter
         public readonly HashSet<Block> Visited = new();
         public readonly List<AstError> Errors = new();
 
+        /// <summary>
+        /// The line the next instruction will occupy in the source MineCodeWriter emits.
+        /// Keeping it in step with the writer means every instruction carries the line a
+        /// backend/VM diagnostic would point at in the generated MineCode.
+        /// </summary>
+        public int NextLine = 1;
+
+        public int TakeLine() => NextLine++;
+
         public void Error(Block b, string message) => Errors.Add(new AstError(b, message));
     }
 
@@ -120,7 +129,10 @@ static class AstConverter
         }
 
         if (hatRoot != null)
+        {
+            ctx.NextLine = 1; // every script's generated source starts at line 1
             scripts.Add(new Body(ConvertChain(hatRoot, ctx).ToArray()));
+        }
 
         return new AstResult { Scripts = scripts.ToArray(), Errors = ctx.Errors };
     }
@@ -145,23 +157,27 @@ static class AstConverter
 
     static Instruction? ConvertStatement(Block b, Ctx ctx)
     {
+        // Taken before any nested body is converted, so the header of an if/while owns
+        // its own line exactly the way MineCodeWriter writes it.
+        int line = ctx.TakeLine();
+
         switch (b.Kind)
         {
             case BlockKind.Step:
-                return new StepInstruction(ValueOf(b, 0, ctx));
+                return new StepInstruction(ValueOf(b, 0, ctx), line);
             case BlockKind.Turn:
-                return new TurnInstruction(ValueOf(b, 0, ctx));
+                return new TurnInstruction(ValueOf(b, 0, ctx), line);
             case BlockKind.Mine:
-                return new MineInstruction();
+                return new MineInstruction(line);
             case BlockKind.Print:
-                return new PrintInstruction(ValueOf(b, 0, ctx));
+                return new PrintInstruction(ValueOf(b, 0, ctx), line);
             case BlockKind.Set:
                 {
                     string? name = b.Slots.Count > 0 ? b.Slots[0].SelectedName : null;
                     if (name == null) ctx.Error(b, "no variable chosen");
                     else if (ctx.Registry.IsBuiltin(name)) ctx.Error(b, $"{name} is read-only");
                     else if (!ctx.Registry.Contains(name)) ctx.Error(b, $"unknown variable {name}");
-                    return new SetInstruction(name ?? "", ValueOf(b, 1, ctx));
+                    return new SetInstruction(name ?? "", ValueOf(b, 1, ctx), line);
                 }
             case BlockKind.If:
                 {
@@ -169,10 +185,16 @@ static class AstConverter
                     var body = new Body(ConvertChain(c.Inner, ctx).ToArray());
                     if (body.Instructions.Length == 0)
                         ctx.Error(c, "if body can't be empty");
-                    Body? elseBody = c.HasElse ? new Body(ConvertChain(c.Inner2, ctx).ToArray()) : null;
-                    if (elseBody is { Instructions.Length: 0 })
-                        ctx.Error(c, "else body can't be empty");
-                    return new IfInstruction(ValueOf(b, 0, ctx), body, elseBody);
+
+                    Body? elseBody = null;
+                    if (c.HasElse)
+                    {
+                        ctx.NextLine++; // the `else` keyword gets a line of its own
+                        elseBody = new Body(ConvertChain(c.Inner2, ctx).ToArray());
+                        if (elseBody.Instructions.Length == 0)
+                            ctx.Error(c, "else body can't be empty");
+                    }
+                    return new IfInstruction(ValueOf(b, 0, ctx), body, elseBody, line);
                 }
             case BlockKind.While:
                 {
@@ -180,7 +202,7 @@ static class AstConverter
                     var body = new Body(ConvertChain(c.Inner, ctx).ToArray());
                     if (body.Instructions.Length == 0)
                         ctx.Error(c, "while body can't be empty");
-                    return new WhileInstruction(ValueOf(b, 0, ctx), body);
+                    return new WhileInstruction(ValueOf(b, 0, ctx), body, line);
                 }
             default:
                 ctx.Error(b, "this block can't be a step of a script");

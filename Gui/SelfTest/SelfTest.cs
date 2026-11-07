@@ -965,32 +965,34 @@ static class SelfTest
         Check(result.Errors.Count == 0, $"the target script converts cleanly, got: {problems}");
         Check(result.Scripts.Length == 1, "one script came out");
 
+        // Lines are the generated MineCode's lines (the `else` keyword owns line 12),
+        // which is exactly what the Backend parser reports for the same source.
         Body expected = new(
         [
-            new SetInstruction("arany", new IsThere(new Literal(2))),
-            new PrintInstruction(new Variable("arany")),
-            new SetInstruction("count", new Literal(0)),
-            new SetInstruction("fal", new IsThere(new Literal(1))),
-            new SetInstruction("megy", new Not(new Variable("fal"))),
+            new SetInstruction("arany", new IsThere(new Literal(2)), 1),
+            new PrintInstruction(new Variable("arany"), 2),
+            new SetInstruction("count", new Literal(0), 3),
+            new SetInstruction("fal", new IsThere(new Literal(1)), 4),
+            new SetInstruction("megy", new Not(new Variable("fal")), 5),
             new WhileInstruction(new Variable("megy"), new Body(
             [
-                new SetInstruction("arany", new IsThere(new Literal(2))),
+                new SetInstruction("arany", new IsThere(new Literal(2)), 7),
                 new IfInstruction(new Variable("arany"),
                     new Body(
                     [
-                        new StepInstruction(new Literal(1)),
-                        new MineInstruction(),
+                        new StepInstruction(new Literal(1), 9),
+                        new MineInstruction(10),
                         new SetInstruction("count",
-                            new BinOp(new Variable("count"), new Literal(1), BinOp.Operation.Add)),
+                            new BinOp(new Variable("count"), new Literal(1), BinOp.Operation.Add), 11),
                     ]),
                     new Body(
                     [
-                        new StepInstruction(new Literal(1)),
-                        new SetInstruction("fal", new IsThere(new Literal(1))),
-                        new SetInstruction("megy", new Not(new Variable("fal"))),
-                    ])),
-            ])),
-            new PrintInstruction(new Variable("count")),
+                        new StepInstruction(new Literal(1), 13),
+                        new SetInstruction("fal", new IsThere(new Literal(1)), 14),
+                        new SetInstruction("megy", new Not(new Variable("fal")), 15),
+                    ]), 8),
+            ]), 6),
+            new PrintInstruction(new Variable("count"), 16),
         ]);
 
         Check(Same(result.Scripts[0], expected), "the AST is exactly the hand-written target tree");
@@ -1292,19 +1294,24 @@ print count
         return true;
     }
 
+    /// <summary>Structural equality including `Line`: the converted AST must carry the
+    /// same line numbers the Backend parser produces for the generated source.</summary>
     static bool SameInstruction(Instruction a, Instruction b) => (a, b) switch
     {
-        (StepInstruction x, StepInstruction y) => SameValue(x.Value, y.Value),
-        (TurnInstruction x, TurnInstruction y) => SameValue(x.Value, y.Value),
-        (MineInstruction, MineInstruction) => true,
-        (PrintInstruction x, PrintInstruction y) => SameValue(x.Value, y.Value),
+        (StepInstruction x, StepInstruction y) =>
+            x.Line == y.Line && SameValue(x.Value, y.Value),
+        (TurnInstruction x, TurnInstruction y) =>
+            x.Line == y.Line && SameValue(x.Value, y.Value),
+        (MineInstruction x, MineInstruction y) => x.Line == y.Line,
+        (PrintInstruction x, PrintInstruction y) =>
+            x.Line == y.Line && SameValue(x.Value, y.Value),
         (SetInstruction x, SetInstruction y) =>
-            x.variableName == y.variableName && SameValue(x.Value, y.Value),
+            x.Line == y.Line && x.variableName == y.variableName && SameValue(x.Value, y.Value),
         (IfInstruction x, IfInstruction y) =>
-            SameValue(x.Expression, y.Expression) &&
+            x.Line == y.Line && SameValue(x.Expression, y.Expression) &&
             Same(x.body, y.body) && Same(x.elseBody, y.elseBody),
         (WhileInstruction x, WhileInstruction y) =>
-            SameValue(x.Expression, y.Expression) && Same(x.body, y.body),
+            x.Line == y.Line && SameValue(x.Expression, y.Expression) && Same(x.body, y.body),
         _ => false,
     };
 

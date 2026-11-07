@@ -15,7 +15,7 @@ public class MineCodeVisitor : MineCodeParserBaseVisitor<object>
 
     public override Instruction[] VisitInstructions([NotNull] MineCodeParser.InstructionsContext context)
     {
-        if (context.instruction() == null) return [];
+        if (context.instruction() == null) return [];       
 
         var instructions = context.instruction();
         var parsedInstructions = new Instruction[instructions.Length];
@@ -35,37 +35,37 @@ public class MineCodeVisitor : MineCodeParserBaseVisitor<object>
 
     public override Instruction VisitStepInstruction([NotNull] MineCodeParser.StepInstructionContext context)
     {
-        return new StepInstruction(VisitExpression(context.expression()));
+        return new StepInstruction(VisitExpression(context.expression()), context.Start.Line);
     }
 
     public override Instruction VisitSetInstruction([NotNull] MineCodeParser.SetInstructionContext context)
     {
-        return new SetInstruction(context.IDENTIFIER().GetText(), VisitExpression(context.expression()));
+        return new SetInstruction(context.IDENTIFIER().GetText(), VisitExpression(context.expression()), context.Start.Line);
     }
 
     public override Instruction VisitMineInstruction([NotNull] MineCodeParser.MineInstructionContext context)
     {
-        return new MineInstruction();
+        return new MineInstruction(context.Start.Line);
     }
 
     public override Instruction VisitTurnInstruction([NotNull] MineCodeParser.TurnInstructionContext context)
     {
-        return new TurnInstruction(VisitExpression(context.expression()));
+        return new TurnInstruction(VisitExpression(context.expression()), context.Start.Line);
     }
 
     public override object VisitPrintInstruction([NotNull] MineCodeParser.PrintInstructionContext context)
     {
-        return new PrintInstruction(VisitExpression(context.expression()));
+        return new PrintInstruction(VisitExpression(context.expression()), context.Start.Line);
     }
 
     public override Instruction VisitIfInstruction([NotNull] MineCodeParser.IfInstructionContext context)
     {
-        return new IfInstruction(VisitExpression(context.expression()), VisitBody(context.body()[0]), context.body().Length == 2 ? VisitBody(context.body()[1]) : null);
+        return new IfInstruction(VisitExpression(context.expression()), VisitBody(context.body()[0]), context.body().Length == 2 ? VisitBody(context.body()[1]) : null, context.Start.Line);
     }
 
     public override Instruction VisitWhileInstruction([NotNull] MineCodeParser.WhileInstructionContext context)
     {
-        return new WhileInstruction(VisitExpression(context.expression()), VisitBody(context.body()));
+        return new WhileInstruction(VisitExpression(context.expression()), VisitBody(context.body()), context.Start.Line);
     }
 
     public override Body VisitBody([NotNull] MineCodeParser.BodyContext context)

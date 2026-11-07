@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using T2G_Cookie.Shared.Ast;
 
@@ -123,6 +124,22 @@ public struct ValueUnion
 
     public override string ToString()
     {
+        if (type == ValueType.Number)
+        {
+            return $"{value}";
+        }
+
+        if (type == ValueType.Boolean)
+        {
+            return $"{boolean}";
+        }
+
+        if (type == ValueType.Variable)
+        {
+            return $"{variableId}";
+        }
+
+
         return $"{type} {value} {variableId} {boolean}";
     }
 }
@@ -147,10 +164,11 @@ public struct BytecodeInstruction
                     value = pos
                 }
             }
-        }
+        },
+        metadata = MakeMetadata(-1, true)
     };
 
-    public static BytecodeInstruction If(int body, bool hasElse, int elseBody) => new()
+    public static BytecodeInstruction If(int body, bool hasElse, int elseBody, int line, bool isWhile = false) => new()
     {
         instructionKind = InstructionKind.If,
         instruction = new Instruction
@@ -161,7 +179,8 @@ public struct BytecodeInstruction
                 hasElse = hasElse,
                 elseBody = elseBody
             }
-        }
+        },
+        metadata = MakeMetadata(line, false, isWhile)
     };
 
     public static BytecodeInstruction Push(ValueUnion value) => new()
@@ -173,7 +192,16 @@ public struct BytecodeInstruction
             {
                 valueUnion = value
             }
-        }
+        },
+        metadata = MakeMetadata(-1, true)
+    };
+
+    public static Metadata MakeMetadata(int line, bool injected, bool isWhile = false) => new()
+    {
+        line     = line,
+        injected = injected,
+        ifIsWhile = isWhile
+
     };
 
 
@@ -199,6 +227,11 @@ public struct BytecodeInstruction
         Push,   // nice and simple and used for a bit more direct stack manipulation purely from codegen
 
         End    // marks the end of the program
+    }
+
+    interface IBCFormat
+    {
+        string format();
     }
 
     [StructLayout(LayoutKind.Explicit)]
@@ -243,11 +276,44 @@ public struct BytecodeInstruction
 
     public struct Metadata
     {
-        public int line;
+        public int  line;
+        public bool injected;
+        public bool ifIsWhile;
     }
 
     public InstructionKind instructionKind;
     public Instruction instruction;
 
     public Metadata metadata;
+
+    public string format(ValueUnion evaluatedValue)
+    {
+        if (instructionKind == InstructionKind.Step)
+        {
+            return $"step forward {evaluatedValue}";
+        }
+
+        if (instructionKind == InstructionKind.Turn)
+        {
+            return $"turn by {evaluatedValue}";
+        }
+
+        if (instructionKind == InstructionKind.Mine)
+        {
+            return $"mine here";
+        }
+
+        if (instructionKind == InstructionKind.Print)
+        {
+            return $"print {evaluatedValue}";
+        }
+
+        if (instructionKind == InstructionKind.Call)
+        {
+            return $"isThere {instruction.singleValueInstruction.valueUnion.value} {evaluatedValue}";
+        }
+
+
+        return "";
+    }
 }

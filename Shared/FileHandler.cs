@@ -1,73 +1,16 @@
-﻿namespace Shared;
+﻿using System.IO;
+using System.Threading;
 
-public class CodeBlock
-{
-    public string? Command { get; set; }
-    public int IndentLevel { get; set; }
-    public CodeBlock? Next { get; set; }
-    public List<CodeBlock> Children { get; } = new();
-    
-    public CodeBlock(string? command, int  indentLevel = 0)
-    {
-        Command = command;
-        IndentLevel = indentLevel;
-    }
-}
-
-public class CodeBlockList
-{
-    public CodeBlock? Head { get; set; }
-    public CodeBlock? Tail { get; set; }
-    public int Count { get; private set; }
-
-    public void AddLast(CodeBlock block)
-    {
-        if (Head == null)
-        {
-            Head = Tail = block;
-        }
-        else
-        {
-            Tail!.Next = block;
-            Tail = block;
-        }
-        Count++;
-    }
-
-    public IEnumerable<CodeBlock> Flatten()
-    {
-        var current = Head;
-        while (current != null)
-        {
-            yield return current;
-            foreach (var child in FlattenRecursive(current.Children))
-            {
-                yield return child;
-            }
-            current = current.Next;
-        }
-    }
-
-    private static IEnumerable<CodeBlock> FlattenRecursive(List<CodeBlock> children)
-    {
-        foreach (var child in children)
-        {
-            yield return child;
-            foreach (var grandchild in FlattenRecursive(child.Children))
-            {
-                yield return grandchild;
-            }
-        }
-    }
-}
+namespace Shared;
 
 public class HandleInputFile
 {
-    public CodeBlockList Code { get; } = new();
+    public List<string> Code { get; private set; }
     public char[,]? Map { get; private set; }
     
     public HandleInputFile(string fileName)
     {
+        Code = [];
         ReadFile(fileName);
     }
     public char[,]? ReadFile(string file)
@@ -86,19 +29,16 @@ public class HandleInputFile
         {
             string? mapLine = sr.ReadLine();
             if (mapLine == null) break;
+            
             for (int c = 0; c < mapLine.Length && c < cols; c++)
             {
                 Map[r, c] = mapLine[c];
             }
         }
         
-        var indentStack = new Stack<(CodeBlock block, int level)>();
-        
         while (!sr.EndOfStream)
         {
             string? line = sr.ReadLine();
-            if (line == null) break;
-            
             if (mapIdentifiers.Any(line.StartsWith))
             {
                 if (currentRow < Map.GetLength(0))
@@ -109,34 +49,55 @@ public class HandleInputFile
                     }
                     currentRow++;
                 }
-                continue;
-            }
-
-            int indent = 0;
-            while (indent < line.Length && line[indent] == ' ') indent++;
-            string trim = line.Trim();
-            if (string.IsNullOrEmpty(trim)) continue;
-
-            int indentLevel = indent / 4;
-
-            while (indentStack.Count > 0 && indentStack.Peek().level >= indentLevel)
-            {
-                indentStack.Pop();
-            }
-            
-            var block = new CodeBlock(trim, indentLevel);
-
-            if (indentStack.Count == 0)
-            {
-                Code.AddLast(block);
             }
             else
             {
-                indentStack.Peek().block.Children.Add(block);
+                Code.Add(line);
             }
-            
-            indentStack.Push((block, indentLevel));
         }
         return Map;
+    }
+}
+
+public class HandleOutputFile : IDisposable
+{
+    private readonly StreamWriter _writer;
+    private readonly object _lock = new();
+    private bool _finished;
+
+    public HandleOutputFile(string outputPath)
+    {
+        var fs = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.None);
+        _writer = new StreamWriter(fs);
+        {
+            _writer.AutoFlush = true;
+        }
+    }
+
+    public void Log(string line)
+    {
+        lock (_lock)
+        {
+            if (_finished) return;
+            _writer.WriteLine(line);
+        }
+    }
+
+    public void Finish()
+    {
+        lock (_lock)
+        {
+            if (_finished) return;
+            _writer.WriteLine("EOR");
+            _finished = true;
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (_lock)
+        {
+            _writer.Dispose();
+        }
     }
 }
