@@ -13,8 +13,9 @@ internal class Program
         string fileName = args[0].Equals("-q") 
             ? args[1] 
             : args[0];
-        /* Console.WriteLine(fileName);
         HandleInputFile handler = new HandleInputFile(fileName);
+        
+        /* Console.WriteLine(fileName);
         Console.WriteLine($"Code lines: {handler.Code.Count}");
         foreach (var block in handler.Code.Flatten())
         {
