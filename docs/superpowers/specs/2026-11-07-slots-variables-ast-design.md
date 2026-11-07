@@ -85,6 +85,14 @@ sealed class Slot
   that reporter; pressing elsewhere drags the stack. Pressing an empty
   `Value` slot starts no drag. Pressing a `Name` slot opens its dropdown
   (a click, never a drag).
+- **Click vs drag:** a press that travels less than `Theme.DragThreshold`
+  never moves the block — it re-homes exactly where it was on release and
+  runs the block's click action (caret / toggle / dropdown). Only past the
+  threshold does the block start following the pointer, so ordinary hand
+  jitter can no longer turn a click into a tiny drag.
+- **Literal category:** `number`, `true` and `false` share a `Value`
+  category (the grammar's `NUMBER` / `TRUE` / `FALSE` atoms); `is there`
+  stays in `Sensing` because it is a function call, not a value.
 
 ## 2. Interaction & block vocabulary
 
@@ -106,14 +114,21 @@ sealed class Slot
 | Block | Category | Behavior |
 |---|---|---|
 | `Start clicked` (hat) | Control | Singleton: toolbox item greyed while one exists; factory refuses a second. |
-| `<number>` | Sensing | Inline text field: click = caret, digits only, Enter/click-away commits, empty → badge. |
-| `true` / `false` | Sensing | Click toggles the value. |
+| `<number>` | Value | Inset input box inside the pill: click = caret, digits only, Enter/click-away commits. The block is the gate for keyboard content: `Text` keeps `[0-9]+` only, drops leading zeros, caps at 9 digits and never becomes empty. |
+| `true` / `false` | Value | Click toggles the value. |
 | `<variable>` | Variables | Reporter showing chosen name; click opens the variable dropdown. |
 | `set <name> to <value>` | Variables | Slot 1 = `Name` dropdown, slot 2 = `Value`. |
 
-Existing blocks gain slots: `print <>`, `set forward <>`, `turn by <>`,
+Existing blocks gain slots: `print <>`, `step forward <>`, `turn by <>`,
 `if <> then`, `if <> then <> else`, `while <> do`, all operator reporters
 (`<> + <>`, …, `not <>`), `is there <>`.
+
+**Scope decision — no free-text block.** MineCode's atoms are only
+`NUMBER | TRUE | FALSE | IDENTIFIER` (`lang/MineCodeParser.g4`), so the single
+keyboard input block accepts numbers and nothing else; `NumberBlock.Text`
+enforces that rather than the keyboard path. Typing text would first require a
+`STRING` token in the grammar (plus `./gen_lang` regeneration, the visitor, the
+AST and the VM), which is out of scope until that lands.
 
 ### Dropdowns & variable creation
 
@@ -148,19 +163,20 @@ Walk rules:
 - Root stacks: the stack containing the hat is *the* script; any other
   root stack errors on its first block ("script has no Start block").
   A second hat anywhere errors on that hat ("only one Start block").
-- Statements map 1:1 to existing AST records: `set forward` →
+- Statements map 1:1 to existing AST records: `step forward` →
   `StepInstruction`, `turn by` → `TurnInstruction`, `mine here` →
   `MineInstruction`, `print` → `PrintInstruction`, `set` →
   `SetInstruction(name, value)`, `if` → `IfInstruction(cond, body,
   elseBody?)`, `while` → `WhileInstruction`.
 - Slots → `Value`: number → `Literal`, boolean → `LiteralBool`, variable
-  reporter → `Variable`, `is there <>` → `IsThere(SimpleValue)`,
-  `not <>` → `Not(SimpleValue)`, operators → `BinOp` with the matching
-  `BinOp.Operation`.
+  reporter → `Variable`, built-in cell kind → `Literal(0|1|2)` (so
+  `isThere wall` is exactly `isThere 1`), `is there <>` →
+  `IsThere(SimpleValue)`, `not <>` → `Not(SimpleValue)`, operators →
+  `BinOp` with the matching `BinOp.Operation`.
 - Error cases (each = badge): empty required slot, malformed number
   field, unknown variable, missing hat, second hat, `set` targeting a
-  read-only built-in. Empty `while`/`if` bodies are legal (empty `Body`,
-  matches the grammar).
+  read-only built-in, empty `if`/`while`/`else` body (the grammar's `body`
+  needs at least one instruction).
 
 ### Badges
 
@@ -192,7 +208,7 @@ blocks. Start button and AST dump consume the same `AstResult`.
 - `Gui/Theme.cs` — slot metrics.
 - New `Gui/Variables.cs` — `VariableRegistry`, dropdown/prompt widget.
 - New `Gui/Ast.cs` — `AstConverter`, `AstResult`, badge model.
-- `Gui/App.cs` / `Gui/Program.cs` — Start button, AST dump entry.
+- `Main/Program.cs` — Start button, AST dump entry.
 - `Gui/SelfTest/SelfTest.cs` — new test groups.
 
 ## Risks

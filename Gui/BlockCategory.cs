@@ -27,55 +27,73 @@ sealed class BlockCategory
 }
 
 /// <summary>
-/// The block catalogue. Every block maps to a language construct in the Backend AST.
+/// The block catalogue. Every block maps to a language construct in the Backend AST
+/// (see BlockKind) and every &lt;&gt; placeholder is a real Slot the user drops reporters into.
 /// </summary>
 static class BlockLibrary
 {
     public static List<BlockCategory> CreateCategories()
     {
         var motion = new BlockCategory("Motion", Theme.Rgb(76, 151, 255), Theme.Rgb(51, 115, 204));
-        var looks = new BlockCategory("Looks", Theme.Rgb(153, 102, 255), Theme.Rgb(119, 77, 203));
+        var output = new BlockCategory("Output", Theme.Rgb(153, 102, 255), Theme.Rgb(119, 77, 203));
         var control = new BlockCategory("Control", Theme.Rgb(255, 140, 26), Theme.Rgb(207, 111, 21));
         var variables = new BlockCategory("Variables", Theme.Rgb(232, 91, 91), Theme.Rgb(190, 60, 60));
+        var values = new BlockCategory("Value", Theme.Rgb(14, 152, 140), Theme.Rgb(9, 116, 108));
         var operators = new BlockCategory("Operators", Theme.Rgb(76, 201, 124), Theme.Rgb(51, 151, 84));
         var sensing = new BlockCategory("Sensing", Theme.Rgb(102, 178, 255), Theme.Rgb(68, 139, 204));
 
         motion
-            .Add(() => new StackBlock("set forward <>", motion, Pos.Start, Pos.Start))
-            .Add(() => new StackBlock("turn by <>", motion, Pos.Start, Pos.Start))
-            .Add(() => new StackBlock("mine here", motion, Pos.Start, Pos.Start));
+            // Label matches the lexer keyword (STEP: 'step forward'), so what the block
+            // shows is what MineCode actually accepts.
+            .Add(() => new StackBlock([Seg.T("step forward "), Seg.V()], motion, Pos.Start, Pos.Start) { Kind = BlockKind.Step })
+            .Add(() => new StackBlock([Seg.T("turn by "), Seg.V()], motion, Pos.Start, Pos.Start) { Kind = BlockKind.Turn })
+            .Add(() => new StackBlock([Seg.T("mine here")], motion, Pos.Start, Pos.Start) { Kind = BlockKind.Mine });
 
-        looks
-            .Add(() => new StackBlock("print <>", looks, Pos.Start, Pos.Start));
+        output
+            .Add(() => new StackBlock([Seg.T("print "), Seg.V()], output, Pos.Start, Pos.Start) { Kind = BlockKind.Print });
 
         control
-            .Add(() => new CBlock("if <> then", control, Pos.Start, Pos.Start))
-            .Add(() => new CBlock("if <> then <> else", control, Pos.Start, Pos.Start))
-            .Add(() => new CBlock("while <> do", control, Pos.Start, Pos.Start, hasNext: false));
+            // The green-flag hat: exactly one may exist (the toolbox greys it out while one does).
+            .Add(() => new HatBlock([Seg.T("Start clicked")], control, Pos.Start, Pos.Start) { Kind = BlockKind.Start })
+            .Add(() => new CBlock([Seg.T("if "), Seg.V(), Seg.T(" then")], control, Pos.Start, Pos.Start) { Kind = BlockKind.If })
+            .Add(() => new CBlock([Seg.T("if "), Seg.V(), Seg.T(" then")], control, Pos.Start, Pos.Start, hasElse: true) { Kind = BlockKind.If })
+            .Add(() => new CBlock([Seg.T("while "), Seg.V(), Seg.T(" do")], control, Pos.Start, Pos.Start) { Kind = BlockKind.While });
 
         variables
-            .Add(() => new StackBlock("set <> to <>", variables, Pos.Start, Pos.Start));
+            .Add(() => new StackBlock([Seg.T("set "), Seg.N(), Seg.T(" to "), Seg.V()], variables, Pos.Start, Pos.Start) { Kind = BlockKind.Set })
+            .Add(() => new VariableBlock(variables, Pos.Start, Pos.Start));
+
+        // The literal atoms of the grammar (NUMBER, TRUE, FALSE): the two you can type
+        // or toggle into any field. They live apart from `is there` because sensing is a
+        // function call, not a value.
+        values
+            .Add(() => new NumberBlock(values, Pos.Start, Pos.Start))
+            .Add(() => new BooleanBlock(values, Pos.Start, Pos.Start) { Value = true })
+            .Add(() => new BooleanBlock(values, Pos.Start, Pos.Start) { Value = false });
 
         operators
-            .Add(() => new ReporterBlock("<> + <>", operators, Pos.Start, Pos.Start))
-            .Add(() => new ReporterBlock("<> - <>", operators, Pos.Start, Pos.Start))
-            .Add(() => new ReporterBlock("<> * <>", operators, Pos.Start, Pos.Start))
-            .Add(() => new ReporterBlock("<> = <>", operators, Pos.Start, Pos.Start))
-            .Add(() => new ReporterBlock("<> <> <>", operators, Pos.Start, Pos.Start))
-            .Add(() => new ReporterBlock("<> > <>", operators, Pos.Start, Pos.Start))
-            .Add(() => new ReporterBlock("<> <= <>", operators, Pos.Start, Pos.Start))
-            .Add(() => new ReporterBlock("<> >= <>", operators, Pos.Start, Pos.Start))
-            .Add(() => new ReporterBlock("<> and <>", operators, Pos.Start, Pos.Start))
-            .Add(() => new ReporterBlock("<> or <>", operators, Pos.Start, Pos.Start))
-            .Add(() => new ReporterBlock("not <>", operators, Pos.Start, Pos.Start));
+            .Add(() => new ReporterBlock([Seg.V(), Seg.T(" + "), Seg.V()], operators, Pos.Start, Pos.Start) { Kind = BlockKind.Add })
+            .Add(() => new ReporterBlock([Seg.V(), Seg.T(" - "), Seg.V()], operators, Pos.Start, Pos.Start) { Kind = BlockKind.Sub })
+            .Add(() => new ReporterBlock([Seg.V(), Seg.T(" * "), Seg.V()], operators, Pos.Start, Pos.Start) { Kind = BlockKind.Mul })
+            .Add(() => new ReporterBlock([Seg.V(), Seg.T(" = "), Seg.V()], operators, Pos.Start, Pos.Start) { Kind = BlockKind.Eq })
+            .Add(() => new ReporterBlock([Seg.V(), Seg.T(" <> "), Seg.V()], operators, Pos.Start, Pos.Start) { Kind = BlockKind.Neq })
+            .Add(() => new ReporterBlock([Seg.V(), Seg.T(" < "), Seg.V()], operators, Pos.Start, Pos.Start) { Kind = BlockKind.Lt })
+            .Add(() => new ReporterBlock([Seg.V(), Seg.T(" > "), Seg.V()], operators, Pos.Start, Pos.Start) { Kind = BlockKind.Gt })
+            .Add(() => new ReporterBlock([Seg.V(), Seg.T(" <= "), Seg.V()], operators, Pos.Start, Pos.Start) { Kind = BlockKind.Leq })
+            .Add(() => new ReporterBlock([Seg.V(), Seg.T(" >= "), Seg.V()], operators, Pos.Start, Pos.Start) { Kind = BlockKind.Geq })
+            .Add(() => new ReporterBlock([Seg.V(), Seg.T(" and "), Seg.V()], operators, Pos.Start, Pos.Start) { Kind = BlockKind.And })
+            .Add(() => new ReporterBlock([Seg.V(), Seg.T(" or "), Seg.V()], operators, Pos.Start, Pos.Start) { Kind = BlockKind.Or })
+            .Add(() => new ReporterBlock([Seg.T("not "), Seg.V()], operators, Pos.Start, Pos.Start) { Kind = BlockKind.Not });
 
         sensing
-            .Add(() => new ReporterBlock("is there <>", sensing, Pos.Start, Pos.Start))
-            .Add(() => new ReporterBlock("true", sensing, Pos.Start, Pos.Start))
-            .Add(() => new ReporterBlock("false", sensing, Pos.Start, Pos.Start))
-            .Add(() => new ReporterBlock("<number>", sensing, Pos.Start, Pos.Start))
-            .Add(() => new ReporterBlock("<variable>", sensing, Pos.Start, Pos.Start));
+            .Add(() => new ReporterBlock([Seg.T("is there "), Seg.V()], sensing, Pos.Start, Pos.Start) { Kind = BlockKind.IsThere })
+            // The cell kinds: the values isThere reads. Their own blocks here, not
+            // entries in the variable dropdown - each one converts to the literal
+            // cell code it stands for (empty=0, wall=1, gold=2).
+            .Add(() => new ReporterBlock([Seg.T("empty")], sensing, Pos.Start, Pos.Start) { Kind = BlockKind.Empty })
+            .Add(() => new ReporterBlock([Seg.T("wall")], sensing, Pos.Start, Pos.Start) { Kind = BlockKind.Wall })
+            .Add(() => new ReporterBlock([Seg.T("gold")], sensing, Pos.Start, Pos.Start) { Kind = BlockKind.Gold });
 
-        return new List<BlockCategory> { motion, looks, control, variables, operators, sensing };
+        return new List<BlockCategory> { motion, output, control, variables, values, operators, sensing };
     }
 }

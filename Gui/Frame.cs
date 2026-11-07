@@ -34,24 +34,14 @@ public class Frame : Element
         }
         public override void Update(int offsetX, int offsetY)
         {
-                int screenX = X + offsetX;
-                int screenY = Y + offsetY;
+                // Size responds to the screen via Dim (percent of screen width/height).
+                Width = WPercent > 0 ? Dim.GetWSize(WPercent) : Width;
+                Height = HPercent > 0 ? Dim.GetHSize(HPercent) : Height;
 
-                int containerW = Parent is Frame p ? p.Width : Raylib.GetScreenWidth();
-                int containerH = Parent is Frame p2 ? p2.Height : Raylib.GetScreenHeight();
-                int w = containerW * WPercent / 100;
-                int h = containerH * HPercent / 100;
-
-                // Publish the size during Update as well: children resolve their position
-                // against it before the first Draw has ever run.
-                Width = w;
-                Height = h;
-
-                int drawX = HAnchor == Anchor.End ? containerW - w : screenX;
-                int drawY = VAnchor == Anchor.End ? containerH - h : screenY;
+                (int drawX, int drawY) = ResolvePosition(offsetX, offsetY);
 
                 Vector2 mouse = Raylib.GetMousePosition();
-                bool over = mouse.X >= drawX && mouse.X < drawX + w && mouse.Y >= drawY && mouse.Y < drawY + h;
+                bool over = mouse.X >= drawX && mouse.X < drawX + Width && mouse.Y >= drawY && mouse.Y < drawY + Height;
 
                 if (over) HoveredFrame = this;
 
@@ -60,21 +50,30 @@ public class Frame : Element
                                 cf.Update(drawX - ScrollX, drawY - ScrollY);
         }
 
+        /// <summary>
+        /// Where this frame's top-left lands on screen. Start follows the offset chain
+        /// it was handed; End anchors to the container's far edge <i>within</i> that
+        /// chain, so a right-aligned child of a right-shifted parent still ends up
+        /// where the parent draws (the old End branch dropped the offset and pulled
+        /// such children back toward the window's origin).
+        /// </summary>
+        protected (int X, int Y) ResolvePosition(int offsetX, int offsetY)
+        {
+                int containerW = Parent is Frame p ? p.Width : Raylib.GetScreenWidth();
+                int containerH = Parent is Frame p2 ? p2.Height : Raylib.GetScreenHeight();
+
+                int x = HAnchor == Anchor.End ? offsetX + containerW - Width : X + offsetX;
+                int y = VAnchor == Anchor.End ? offsetY + containerH - Height : Y + offsetY;
+                return (x, y);
+        }
+
         public override void Draw(int offsetX, int offsetY)
         {
-                int screenW = Raylib.GetScreenWidth();
-                int screenH = Raylib.GetScreenHeight();
+                // Size responds to the screen via Dim (percent of screen width/height).
+                Width = WPercent > 0 ? Dim.GetWSize(WPercent) : Width;
+                Height = HPercent > 0 ? Dim.GetHSize(HPercent) : Height;
 
-                int screenX = X + offsetX;
-                int screenY = Y + offsetY;
-
-                int containerW = Parent is Frame p ? p.Width : screenW;
-                int containerH = Parent is Frame p2 ? p2.Height : screenH;
-                Width = containerW * WPercent / 100;
-                Height = containerH * HPercent / 100;
-
-                int drawX = HAnchor == Anchor.End ? containerW - Width : screenX;
-                int drawY = VAnchor == Anchor.End ? containerH - Height : screenY;
+                (int drawX, int drawY) = ResolvePosition(offsetX, offsetY);
 
                 int contentW = Width;
                 int contentH = Height;
@@ -98,8 +97,8 @@ public class Frame : Element
         {
                 foreach (var child in Children)
                 {
-                        int childW = child.WPercent > 0 ? containerW * child.WPercent / 100 : child.Width;
-                        int childH = child.HPercent > 0 ? containerH * child.HPercent / 100 : child.Height;
+                        int childW = child.WPercent > 0 ? Dim.GetWSize(child.WPercent) : child.Width;
+                        int childH = child.HPercent > 0 ? Dim.GetHSize(child.HPercent) : child.Height;
                         cw = Math.Max(cw, child.X + childW);
                         ch = Math.Max(ch, child.Y + childH);
                         if (child is Frame cf)
