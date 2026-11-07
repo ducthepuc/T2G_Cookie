@@ -18,7 +18,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="..\*.cs" Exclude="..\Program.cs;..\App.cs" />
+    <Compile Include="..\*.cs" Exclude="..\App.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Shared\Shared.csproj" />
+    <ProjectReference Include="..\..\Backend\Backend.csproj" />
   </ItemGroup>
 
   <ItemGroup>
