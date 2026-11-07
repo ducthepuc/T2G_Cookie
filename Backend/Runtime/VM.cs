@@ -1,15 +1,10 @@
-using System.Buffers;
-using System.Runtime.InteropServices;
-using System.Security.Cryptography.X509Certificates;
-using T2G_Cookie.Shared.Ast;
-
 namespace T2G_Cookie.Backend.VM;
 
 public class VMInstance
 {
     public interface IVMAPI
     {
-        void log(BytecodeInstruction instruction, ExecutionResult result, ValueUnion resultValue);
+        void log(BytecodeInstruction instruction, ExecutionResult result, ValueUnion? param, ValueUnion? ret);
         void logEor(bool exceeded);
 
         // API
@@ -27,6 +22,10 @@ public class VMInstance
     readonly Dictionary<int, BytecodeInstruction[]> bodies;
     public Stack<ValueUnion> executionStack = new();
     public ValueUnion[] Variables;
+
+    BytecodeInstruction? lineApi;
+    ValueUnion? lineParam;
+    ValueUnion? lineRet;
 
     IVMAPI? implementor;
     bool isReady = false;
@@ -115,19 +114,14 @@ public class VMInstance
             }
 
             ref var instruction = ref FetchDecode();
-            var executionResult = Execute(ref instruction, out ValueUnion? resultValueUnionStuff);
+            var executionResult = Execute(ref instruction);
 
-            if (!instruction.metadata.injected)
+            if (!instruction.metadata.injected || !executionResult.Ok)
             {
-                var resultValue = resultValueUnionStuff.HasValue ? resultValueUnionStuff.Value : new ValueUnion{ type = ValueUnion.ValueType.Uninitialized };
-
-                if (programCounter >= 2 && instructions[programCounter-2].instructionKind == BytecodeInstruction.InstructionKind.Call)
-                {
-                    Implementor.log(instructions[programCounter-2], executionResult, resultValue);
-                }else
-                {
-                    Implementor.log(instruction, executionResult, resultValue);
-                }
+                Implementor.log(lineApi ?? instruction, executionResult, lineParam, lineRet);
+                lineApi = null;
+                lineParam = null;
+                lineRet = null;
                 instructionCounter++;
             }
             
@@ -137,6 +131,7 @@ public class VMInstance
                 continue;
             }
 
+            Implementor.logEor(false);
             return executionResult;
         }
 
@@ -225,13 +220,12 @@ public class VMInstance
         var leftResult = FetchValue(ref bin.left, out ValueUnion cleanUnionLeft);
         if (!leftResult.Ok)
             return leftResult;
+        if (cleanUnionLeft.type != ValueUnion.ValueType.Number) return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_BAD_OPERAND);
 
         var rightResult = FetchValue(ref bin.right, out ValueUnion cleanUnionRight);
         if (!rightResult.Ok)
             return rightResult;
-            
-        if (cleanUnionLeft.type != ValueUnion.ValueType.Number) return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_TYPE_MISMATCH);
-        if (cleanUnionRight.type != ValueUnion.ValueType.Number) return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_TYPE_MISMATCH);
+        if (cleanUnionRight.type != ValueUnion.ValueType.Number) return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_BAD_OPERAND);
 
         result = (cleanUnionLeft.value, cleanUnionRight.value);
         return ExecutionResult.OK;
@@ -269,15 +263,25 @@ public class VMInstance
 
     ExecutionResult HandleBolBinOp(ref BytecodeInstruction instruction, BytecodeInstruction.InstructionKind kind)
     {
+        ValueUnion.ValueType? required = kind switch
+        {
+            BytecodeInstruction.InstructionKind.Gt or BytecodeInstruction.InstructionKind.Lt or
+            BytecodeInstruction.InstructionKind.Leq or BytecodeInstruction.InstructionKind.Geq => ValueUnion.ValueType.Number,
+            BytecodeInstruction.InstructionKind.And or BytecodeInstruction.InstructionKind.Or => ValueUnion.ValueType.Boolean,
+            _ => null
+        };
+
         var resultLeft = FetchValue(ref instruction.instruction.binaryInstruction.left, out ValueUnion cleanLeftUnion);
         if (!resultLeft.Ok) return resultLeft;
+        if (required.HasValue && cleanLeftUnion.type != required.Value) return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_BAD_OPERAND);
 
         var resultRight = FetchValue(ref instruction.instruction.binaryInstruction.right, out ValueUnion cleanRightUnion);
         if (!resultRight.Ok) return resultRight;
+        if (required.HasValue && cleanRightUnion.type != required.Value) return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_BAD_OPERAND);
 
         if (cleanLeftUnion.type != cleanRightUnion.type)
         {
-            return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_TYPE_MISMATCH);
+            return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_BAD_OPERAND);
         }
         
         bool finalResult;
@@ -296,10 +300,10 @@ public class VMInstance
             finalResult = cleanLeftUnion < cleanRightUnion;
         }else if (kind == BytecodeInstruction.InstructionKind.Leq)
         {
-            finalResult = cleanLeftUnion >= cleanRightUnion;
+            finalResult = cleanLeftUnion <= cleanRightUnion;
         }else if (kind == BytecodeInstruction.InstructionKind.Geq)
         {
-            finalResult = cleanLeftUnion <= cleanRightUnion;
+            finalResult = cleanLeftUnion >= cleanRightUnion;
         }else if (kind == BytecodeInstruction.InstructionKind.And)
         {
             finalResult = ValueUnion.And(cleanLeftUnion, cleanRightUnion);
@@ -332,13 +336,11 @@ public class VMInstance
         programCounter = pos;
     }
 
-    public ExecutionResult Execute(ref BytecodeInstruction instruction, out ValueUnion? resultValueUnionStuff)
+    public ExecutionResult Execute(ref BytecodeInstruction instruction)
     {
         // set cucc to 3 + 6
         // add 3, 6 -> on stack
         // set cucc <- from stack
-
-        resultValueUnionStuff = null;
 
         switch (instruction.instructionKind)
         {
@@ -374,12 +376,11 @@ public class VMInstance
                     var valueUnion = instruction.instruction.singleValueInstruction.valueUnion;
                     var result = FetchValue(ref valueUnion, out ValueUnion value);
 
-                    resultValueUnionStuff = value;
-
                     if (result.Ok)
                     {
+                        lineParam = value;
                         if (value.type == ValueUnion.ValueType.Boolean)
-                            System.Console.WriteLine(value.boolean);
+                            System.Console.WriteLine(value.boolean ? "true" : "false");
                         else if (value.type == ValueUnion.ValueType.Number)
                             System.Console.WriteLine(value.value);
                     }else
@@ -405,7 +406,6 @@ public class VMInstance
 
 
                         set:
-                            resultValueUnionStuff = cleanUnion;
                             Variables[instruction.instruction.setInstruction.variableId] = cleanUnion;
                     }else
                     {
@@ -453,8 +453,7 @@ public class VMInstance
                     {
                         if (cleanValue.type !=  ValueUnion.ValueType.Boolean)
                         {
-            
-                            return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_TYPE_MISMATCH);
+                            return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_BAD_OPERAND);
                         }
                         
                         cleanValue.boolean = !cleanValue.boolean;
@@ -467,13 +466,14 @@ public class VMInstance
                 break;
             case BytecodeInstruction.InstructionKind.Call:
                 {
+                    lineApi = instruction;
                     var result = FetchValue(ref instruction.instruction.singleValueInstruction.valueUnion, out ValueUnion cleanValue);
                     if (result.Ok)
                     {
-                        if (cleanValue.type != ValueUnion.ValueType.Number)
+                        lineParam = cleanValue;
+                        if (cleanValue.type != ValueUnion.ValueType.Number || cleanValue.value < 0 || cleanValue.value > 2)
                         {
-            
-                            return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_TYPE_MISMATCH);
+                            return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_BAD_ARG);
                         }
                         
                         var isThereResult = Implementor.isThere(cleanValue, out bool isItThere);
@@ -487,7 +487,7 @@ public class VMInstance
                                     boolean = isItThere
                                 }
                             );
-                            resultValueUnionStuff = executionStack.Peek();
+                            lineRet = executionStack.Peek();
                         }else
                         {
                             return isThereResult;
@@ -504,13 +504,15 @@ public class VMInstance
                     var result = FetchValue(ref instruction.instruction.singleValueInstruction.valueUnion, out ValueUnion cleanValue);
                     if (result.Ok)
                     {
+                        lineParam = cleanValue;
+                        if (cleanValue.type != ValueUnion.ValueType.Number || cleanValue.value < 0)
+                            return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_BAD_ARG);
+
                         var stepResult = Implementor.move(cleanValue);
                         if (!stepResult.Ok)
                         {
                             return stepResult;
                         }
-
-                        resultValueUnionStuff = cleanValue;
                     }else
                     {
                         return result;
@@ -523,12 +525,15 @@ public class VMInstance
                     var result = FetchValue(ref instruction.instruction.singleValueInstruction.valueUnion, out ValueUnion cleanValue);
                     if (result.Ok)
                     {
+                        lineParam = cleanValue;
+                        if (cleanValue.type != ValueUnion.ValueType.Number || cleanValue.value < 0)
+                            return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_BAD_ARG);
+
                         var turnResult = Implementor.turn(cleanValue);
                         if (!turnResult.Ok)
                         {
                             return turnResult;
                         }
-                        resultValueUnionStuff = cleanValue;
                     }else
                     {
                         return result;

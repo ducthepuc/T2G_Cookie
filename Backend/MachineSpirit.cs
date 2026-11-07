@@ -25,8 +25,6 @@ public class MachineSpirit : VMInstance.IVMAPI
         
         this.position  = machinePos.Value;
         this.direction = direction!.Value;
-
-        System.Console.WriteLine($"I am at {position} facing {direction}");
     }
 
     ~MachineSpirit()
@@ -34,11 +32,12 @@ public class MachineSpirit : VMInstance.IVMAPI
         logger.Dispose();
     }
 
-    public void log(BytecodeInstruction instruction, VMInstance.ExecutionResult executionResult, ValueUnion resultValue)
+    public void log(BytecodeInstruction instruction, VMInstance.ExecutionResult result, ValueUnion? param, ValueUnion? ret)
     {
-        logger.Log($"{instruction.metadata.line}{instruction.format(resultValue) + (!executionResult.Ok ? executionResult.Error.ErrorKind : "")}");
+        string line = instruction.metadata.line + instruction.format(param, ret);
+        if (!result.Ok) line += " " + result.Error.ErrorKind;
+        logger.Log(line);
     }
-
     public void logEor(bool exceeded)
     {
         logger.Finish(exceeded);
