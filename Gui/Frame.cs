@@ -39,19 +39,16 @@ public class Frame : Element
 
                 int containerW = Parent is Frame p ? p.Width : Raylib.GetScreenWidth();
                 int containerH = Parent is Frame p2 ? p2.Height : Raylib.GetScreenHeight();
-                int w = containerW * WPercent / 100;
-                int h = containerH * HPercent / 100;
 
-                // Publish the size during Update as well: children resolve their position
-                // against it before the first Draw has ever run.
-                Width = w;
-                Height = h;
+                // Size responds to the screen via Dim (percent of screen width/height).
+                Width = WPercent > 0 ? Dim.GetWSize(WPercent) : Width;
+                Height = HPercent > 0 ? Dim.GetHSize(HPercent) : Height;
 
-                int drawX = HAnchor == Anchor.End ? containerW - w : screenX;
-                int drawY = VAnchor == Anchor.End ? containerH - h : screenY;
+                int drawX = HAnchor == Anchor.End ? containerW - Width : screenX;
+                int drawY = VAnchor == Anchor.End ? containerH - Height : screenY;
 
                 Vector2 mouse = Raylib.GetMousePosition();
-                bool over = mouse.X >= drawX && mouse.X < drawX + w && mouse.Y >= drawY && mouse.Y < drawY + h;
+                bool over = mouse.X >= drawX && mouse.X < drawX + Width && mouse.Y >= drawY && mouse.Y < drawY + Height;
 
                 if (over) HoveredFrame = this;
 
@@ -70,8 +67,10 @@ public class Frame : Element
 
                 int containerW = Parent is Frame p ? p.Width : screenW;
                 int containerH = Parent is Frame p2 ? p2.Height : screenH;
-                Width = containerW * WPercent / 100;
-                Height = containerH * HPercent / 100;
+
+                // Size responds to the screen via Dim (percent of screen width/height).
+                Width = WPercent > 0 ? Dim.GetWSize(WPercent) : Width;
+                Height = HPercent > 0 ? Dim.GetHSize(HPercent) : Height;
 
                 int drawX = HAnchor == Anchor.End ? containerW - Width : screenX;
                 int drawY = VAnchor == Anchor.End ? containerH - Height : screenY;
@@ -98,8 +97,8 @@ public class Frame : Element
         {
                 foreach (var child in Children)
                 {
-                        int childW = child.WPercent > 0 ? containerW * child.WPercent / 100 : child.Width;
-                        int childH = child.HPercent > 0 ? containerH * child.HPercent / 100 : child.Height;
+                        int childW = child.WPercent > 0 ? Dim.GetWSize(child.WPercent) : child.Width;
+                        int childH = child.HPercent > 0 ? Dim.GetHSize(child.HPercent) : child.Height;
                         cw = Math.Max(cw, child.X + childW);
                         ch = Math.Max(ch, child.Y + childH);
                         if (child is Frame cf)

@@ -1,16 +1,25 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <!-- A library: Main/Program.cs is the one entry point in the solution. -->
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- The host entry point builds the editor out of this assembly's internals. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Main" />
+  </ItemGroup>
+
   <!-- The self-test harness has its own entry point and its own project. -->
   <ItemGroup>
     <Compile Remove="SelfTest/**/*.cs" />
     <None Include="SelfTest/**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Shared\Shared.csproj" />
   </ItemGroup>
 
   <ItemGroup>

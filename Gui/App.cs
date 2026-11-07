@@ -15,6 +15,7 @@ public class App
     {
         Raylib.SetConfigFlags(ConfigFlags.FLAG_WINDOW_RESIZABLE);
         Raylib.InitWindow(ScreenW, ScreenH, "RoboMiner");
+        RayGui.GuiLoadStyleDefault();
         Raylib.SetTargetFPS(120);
     }
 
@@ -36,13 +37,16 @@ public class App
                 Raylib.IsMouseButtonReleased(MouseButton.MOUSE_BUTTON_LEFT))
             {
                 Vector2 mouse = Raylib.GetMousePosition();
-                if (Workspace != null && mouse.X >= Theme.ToolboxWidth)
+                bool overWorkspace = Workspace != null &&
+                    mouse.X >= Workspace.X && mouse.X < Workspace.X + Workspace.Width &&
+                    mouse.Y >= Workspace.Y && mouse.Y < Workspace.Y + Workspace.Height;
+                if (overWorkspace)
                 {
-                    Workspace.AddRootBlock(dragBlock, mouse);
+                    Workspace!.AddRootBlock(dragBlock, mouse);
                 }
                 else
                 {
-                    // dropped over the toolbox or elsewhere: discard. It has to leave the
+                    // dropped outside the workspace: discard. It has to leave the
                     // global element list too, or it keeps being drawn forever as a ghost.
                     dragBlock.UnregisterTree();
                 }

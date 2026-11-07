@@ -38,9 +38,13 @@ public sealed class Toolbox : Frame
     readonly float _contentHeight;
     float _scroll;
     int _hoveredCategory = -1;
+    int _activeCategory = -1;
 
     internal Block? DragBlock { get; set; }
     Vector2 _dragOffset;
+
+    /// <summary>Predicate for the singleton hat: false greys "Start clicked" out.</summary>
+    internal Func<bool>? StartAvailable { get; set; }
 
     internal Toolbox(Func<int> x, Func<int> y, int wPercent, int hPercent, IEnumerable<BlockCategory> categories)
         : base(x, y, wPercent, hPercent)
@@ -58,6 +62,10 @@ public sealed class Toolbox : Frame
             foreach (Func<Block> factory in category.Factories)
             {
                 Block template = factory();
+                // The palette draws its templates itself inside the toolbox scissor.
+                // Without a parent the global Element.DrawAll would draw every template
+                // again, unclipped, on top of the workspace.
+                template.Parent = this;
                 _items.Add(new PaletteItem(template, factory, yy));
                 yy += template.Height + Theme.PaletteGap;
             }
@@ -124,11 +132,13 @@ public sealed class Toolbox : Frame
             bool isHover = hovered == item;
             if (isHover && !item.IsHovered) item.OnHover();
             if (!isHover && item.IsHovered) item.OnUnhover();
+            item.Template.IsHovered = isHover;
         }
 
         if (overToolbox)
             _scroll -= Raylib.GetMouseWheelMove() * 40f;
         ClampScroll();
+        UpdateActiveCategory();
 
         foreach (var item in _items)
             item.Template.Layout(Theme.CategoryStripWidth + Theme.PalettePadding, (int)(item.ContentY - _scroll));
@@ -139,9 +149,12 @@ public sealed class Toolbox : Frame
             {
                 JumpToCategoryAt(localMouse.Y);
             }
-            else if (hovered != null)
+            else if (hovered != null && Available(hovered))
             {
                 DragBlock = hovered.Factory();
+                // Keep the in-flight block out of Element.DrawAll: App draws it once,
+                // on top of everything else, at absolute screen coordinates.
+                DragBlock.Parent = this;
                 int absX = screenX + Theme.CategoryStripWidth + Theme.PalettePadding;
                 int absY = screenY + (int)(hovered.ContentY - _scroll);
                 DragBlock.Layout(absX, absY);
@@ -165,9 +178,14 @@ public sealed class Toolbox : Frame
             BlockCategory c = _categories[i];
             int top = screenY + CategoryRowTop + i * CategoryRowHeight;
             bool hovered = i == _hoveredCategory;
-            Raylib.DrawCircle(screenX + Theme.CategoryStripWidth / 2, top + 20, hovered ? 20f : 16f, hovered ? Raylib.SKYBLUE : c.Color);
+            bool active = i == _activeCategory;
+            Raylib.DrawCircle(screenX + Theme.CategoryStripWidth / 2, top + 20,
+                hovered ? 20f : active ? 18f : 16f, hovered ? Raylib.SKYBLUE : c.Color);
+            if (active && !hovered)
+                Raylib.DrawCircleLines(screenX + Theme.CategoryStripWidth / 2, top + 20, 20f, c.DarkColor);
             int w = Raylib.MeasureText(c.Name, 12);
-            Raylib.DrawText(c.Name, screenX + (Theme.CategoryStripWidth - w) / 2, top + 44, 12, hovered ? Raylib.DARKBLUE : Theme.TextDark);
+            Raylib.DrawText(c.Name, screenX + (Theme.CategoryStripWidth - w) / 2, top + 44, 12,
+                hovered ? Raylib.DARKBLUE : active ? c.DarkColor : Theme.TextDark);
         }
 
         Raylib.BeginScissorMode(screenX + Theme.CategoryStripWidth, screenY, Width - Theme.CategoryStripWidth, Height);
@@ -178,10 +196,28 @@ public sealed class Toolbox : Frame
         }
         foreach (var item in _items)
             item.Template.DrawChain(screenX, screenY);
+
+        // Unavailable items (the Start hat while one already exists) are veiled so the
+        // greyed state is visible, not just enforced.
+        foreach (var item in _items)
+        {
+            if (Available(item)) continue;
+            int ty = (int)(screenY + item.ContentY - _scroll);
+            Raylib.DrawRectangle(screenX + Theme.CategoryStripWidth + Theme.PalettePadding, ty,
+                item.Template.Width, item.Template.Height, new Color(255, 255, 255, 165));
+        }
+
+        DrawScrollbar(screenX, screenY);
         Raylib.EndScissorMode();
 
         Raylib.DrawRectangle(screenX + Width - 1, screenY, 1, Height, Theme.Border);
     }
+
+    bool Available(PaletteItem item) => CanCreate(item.Template);
+
+    /// <summary>False greys an item out: the Start hat while one already exists.</summary>
+    internal bool CanCreate(Block template)
+        => template is not HatBlock || StartAvailable?.Invoke() != false;
 
     void JumpToCategoryAt(float localMouseY)
     {
@@ -193,7 +229,33 @@ public sealed class Toolbox : Frame
 
     void ClampScroll()
     {
-        float max = Math.Max(0f, _contentHeight - Raylib.GetScreenHeight());
+        float max = Math.Max(0f, _contentHeight - Height);
         _scroll = Math.Clamp(_scroll, 0f, max);
+    }
+
+    /// <summary>The category whose title is at (or last passed by) the top of the palette.</summary>
+    void UpdateActiveCategory()
+    {
+        _activeCategory = -1;
+        for (int i = 0; i < _categories.Count; i++)
+            if (_categoryY[_categories[i]] <= _scroll + Theme.CategoryTitleHeight)
+                _activeCategory = i;
+    }
+
+    void DrawScrollbar(int screenX, int screenY)
+    {
+        float viewHeight = Height;
+        if (_contentHeight <= viewHeight) return;
+
+        int trackX = screenX + Width - 7;
+        int trackY = screenY + 6;
+        int trackH = Math.Max(8, (int)viewHeight - 12);
+        Raylib.DrawRectangleRounded(new Rectangle(trackX, trackY, 4, trackH), 1f, 4, Theme.ScrollTrack);
+
+        float maxScroll = _contentHeight - viewHeight;
+        float progress = maxScroll <= 0f ? 0f : _scroll / maxScroll;
+        int thumbH = Math.Max(28, (int)(trackH * (viewHeight / _contentHeight)));
+        int thumbY = trackY + (int)((trackH - thumbH) * Math.Clamp(progress, 0f, 1f));
+        Raylib.DrawRectangleRounded(new Rectangle(trackX, thumbY, 4, thumbH), 1f, 4, Theme.ScrollThumb);
     }
 }
