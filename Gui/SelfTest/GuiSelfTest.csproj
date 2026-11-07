@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Standalone regression / fuzz harness for the block workspace.
+    Compiles the Gui sources directly (they are internal) into its own assembly,
+    excluding Program.cs/App.cs so the two projects don't fight over Main.
+
+    Run it with:  dotnet run + this project path + "-c Release"
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>GuiSelfTest</AssemblyName>
+    <RootNamespace>GuiSelfTest</RootNamespace>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\*.cs" Exclude="..\Program.cs;..\App.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Raylib-CsLo" Version="4.2.0.9" />
+  </ItemGroup>
+
+</Project>
