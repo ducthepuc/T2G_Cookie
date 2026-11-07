@@ -54,7 +54,7 @@ public partial class MineCodeParser : Parser {
 	};
 
 	private static readonly string[] _LiteralNames = {
-		null, null, null, "'set forward'", "'turn by'", "'mine here'", "'print'", 
+		null, null, null, "'step forward'", "'turn by'", "'mine here'", "'print'", 
 		"'set'", "'to'", "'if'", "'else'", "'while'", "'not'", "'isThere'", "'and'", 
 		"'or'", "'+'", "'-'", "'*'", "'='", "'<>'", "'<'", "'>'", "'<='", "'>='", 
 		null, "'true'", "'false'", null, null, "' '"

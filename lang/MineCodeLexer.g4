@@ -19,7 +19,7 @@ namespace T2G_Cookie.Backend.Parsing;
 
 
 // Instructions
-STEP          : 'set forward';
+STEP          : 'step forward';
 TURN          : 'turn by';
 MINE          : 'mine here';
 PRINT         : 'print';

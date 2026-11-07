@@ -17,7 +17,7 @@ public static class MineCode
 
         var root = parser.program();
 
-        System.Console.WriteLine(root.ToStringTree(parser));
+        Console.WriteLine(root.ToStringTree(parser));
 
         MineCodeVisitor visitor = new MineCodeVisitor();
 
@@ -26,12 +26,12 @@ public static class MineCode
 
     public static string[] Tokenize(string code)
     {
-        AntlrInputStream stream = new AntlrInputStream(code);
+        AntlrInputStream stream = new(code);
 
-        MineCodeLexer lexer = new MineCodeLexer(stream);
+        MineCodeLexer lexer = new(stream);
 
-        CommonTokenStream tokenStream = new CommonTokenStream(lexer);
+        CommonTokenStream tokenStream = new(lexer);
 
-        return tokenStream.GetTokens().Select(t => t.Text).ToArray();
+        return lexer.GetAllTokens().Select(t => t.Text).ToArray();
     }
 }
