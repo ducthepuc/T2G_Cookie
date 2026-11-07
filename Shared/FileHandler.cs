@@ -1,73 +1,13 @@
 ﻿namespace Shared;
 
-public class CodeBlock
-{
-    public string? Command { get; set; }
-    public int IndentLevel { get; set; }
-    public CodeBlock? Next { get; set; }
-    public List<CodeBlock> Children { get; } = new();
-    
-    public CodeBlock(string? command, int  indentLevel = 0)
-    {
-        Command = command;
-        IndentLevel = indentLevel;
-    }
-}
-
-public class CodeBlockList
-{
-    public CodeBlock? Head { get; set; }
-    public CodeBlock? Tail { get; set; }
-    public int Count { get; private set; }
-
-    public void AddLast(CodeBlock block)
-    {
-        if (Head == null)
-        {
-            Head = Tail = block;
-        }
-        else
-        {
-            Tail!.Next = block;
-            Tail = block;
-        }
-        Count++;
-    }
-
-    public IEnumerable<CodeBlock> Flatten()
-    {
-        var current = Head;
-        while (current != null)
-        {
-            yield return current;
-            foreach (var child in FlattenRecursive(current.Children))
-            {
-                yield return child;
-            }
-            current = current.Next;
-        }
-    }
-
-    private static IEnumerable<CodeBlock> FlattenRecursive(List<CodeBlock> children)
-    {
-        foreach (var child in children)
-        {
-            yield return child;
-            foreach (var grandchild in FlattenRecursive(child.Children))
-            {
-                yield return grandchild;
-            }
-        }
-    }
-}
-
 public class HandleInputFile
 {
-    public CodeBlockList Code { get; } = new();
+    public List<string> Code { get; private set; }
     public char[,]? Map { get; private set; }
     
     public HandleInputFile(string fileName)
     {
+        Code = [];
         ReadFile(fileName);
     }
     public char[,]? ReadFile(string file)
@@ -92,8 +32,6 @@ public class HandleInputFile
             }
         }
         
-        var indentStack = new Stack<(CodeBlock block, int level)>();
-        
         while (!sr.EndOfStream)
         {
             string? line = sr.ReadLine();
@@ -109,33 +47,11 @@ public class HandleInputFile
                     }
                     currentRow++;
                 }
-                continue;
+                else
+                {
+                    Code.Add(line);
+                }
             }
-
-            int indent = 0;
-            while (indent < line.Length && line[indent] == ' ') indent++;
-            string trim = line.Trim();
-            if (string.IsNullOrEmpty(trim)) continue;
-
-            int indentLevel = indent / 4;
-
-            while (indentStack.Count > 0 && indentStack.Peek().level >= indentLevel)
-            {
-                indentStack.Pop();
-            }
-            
-            var block = new CodeBlock(trim, indentLevel);
-
-            if (indentStack.Count == 0)
-            {
-                Code.AddLast(block);
-            }
-            else
-            {
-                indentStack.Peek().block.Children.Add(block);
-            }
-            
-            indentStack.Push((block, indentLevel));
         }
         return Map;
     }
