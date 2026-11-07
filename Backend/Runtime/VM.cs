@@ -1,22 +1,52 @@
+using System.Buffers;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography.X509Certificates;
 using T2G_Cookie.Shared.Ast;
 
 namespace T2G_Cookie.Backend.VM;
 
 public class VMInstance
 {
-    int programCounter;
+    public interface IVMAPI
+    {
+        void log(BytecodeInstruction instruction, ExecutionResult result, ValueUnion resultValue);
+        void logEor();
 
+        // API
+        ExecutionResult move(long amount);
+        ExecutionResult turn(long amount);
+        ExecutionResult mine();
+        bool isThere(long query);
+    }
+
+    int programCounter;
+    int instructionCounter; // counts non injected instructions.
     bool shouldRun;
     BytecodeInstruction[] instructions;
     readonly BytecodeInstruction[] copyInstructions;
     readonly Dictionary<int, BytecodeInstruction[]> bodies;
-
     public Stack<ValueUnion> executionStack = new();
-
     public ValueUnion[] Variables;
 
-    [StructLayout(LayoutKind.Explicit)]
+    IVMAPI? implementor;
+    bool isReady = false;
+
+    public IVMAPI Implementor
+    {
+        get
+        {
+            if (isReady) return implementor!;   
+            throw new Exception("IT ISN'T READY!");
+        }
+
+        set
+        {
+            isReady = true;
+            implementor = value;
+        }
+    }
+
+
     public struct ExecutionResult
     {
         public enum ErrorKind
@@ -34,15 +64,14 @@ public class VMInstance
             
         public struct ErrorObj
         {
-            public int Line;
             public ErrorKind ErrorKind;
         }
 
-        [FieldOffset(0)] public bool Ok;
-        [FieldOffset(8)] public ErrorObj Error;
+        public bool Ok;
+        public ErrorObj Error;
 
-        public readonly static ExecutionResult OK = new ExecutionResult { Ok = true };
-        public static ExecutionResult ERROR(ErrorKind errorKind) => new ExecutionResult { Error = new ErrorObj { Line = 0, ErrorKind = errorKind}};
+        public readonly static ExecutionResult OK = new() { Ok = true };
+        public static ExecutionResult ERROR(ErrorKind errorKind) => new() { Error = new ErrorObj { ErrorKind = errorKind}};
     }
 
     VMInstance(BytecodeInstruction[] instructions, Dictionary<int, BytecodeInstruction[]> bodies, int variableCount)
@@ -60,6 +89,12 @@ public class VMInstance
         return new VMInstance(header.Main, header.Bodies, header.variableCount);
     }
 
+    public delegate bool Mine();
+    public void Setup()
+    {
+        
+    }
+
     // public static VMInstance CreateFromAST()
     // {
         
@@ -67,9 +102,27 @@ public class VMInstance
 
     public ExecutionResult RunCode(bool pause)
     {
-        while (programCounter<1000 && shouldRun && programCounter < instructions.Length)
+        if (!isReady)
+            return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_UNINITIALIZED);
+
+        while (programCounter<1000 && shouldRun && programCounter < instructions.Length && instructionCounter < 1000)
         {
-            var executionResult = Execute(ref FetchDecode());
+            ref var instruction = ref FetchDecode();
+            var executionResult = Execute(ref instruction, out ValueUnion? resultValueUnionStuff);
+
+            if (!instruction.metadata.injected)
+            {
+                var resultValue = resultValueUnionStuff.HasValue ? resultValueUnionStuff.Value : new ValueUnion{ type = ValueUnion.ValueType.Uninitialized };
+
+                if (programCounter > 0 && instructions[programCounter-2].instructionKind == BytecodeInstruction.InstructionKind.Call)
+                {
+                    Implementor.log(instructions[programCounter-2], executionResult, resultValue);
+                }else
+                {
+                    Implementor.log(instruction, executionResult, resultValue);
+                }
+                instructionCounter++;
+            }
 
             if (executionResult.Ok)
             {
@@ -79,6 +132,12 @@ public class VMInstance
 
             return executionResult;
         }
+        if (instructionCounter > 1000)
+        {
+            return ExecutionResult.ERROR(ExecutionResult.ErrorKind.INSTRUCTION_COUNT_LIMIT_EXCEEDED);
+        }
+
+        Implementor.logEor();
 
         return ExecutionResult.OK;
     }
@@ -105,6 +164,10 @@ public class VMInstance
             {
                 cleanUnion = new();
                 return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_TYPE_MISMATCH);  
+            }else if (stackValue.type == ValueUnion.ValueType.NumberStack)
+            {
+                cleanUnion = executionStack.Pop();
+                return FetchValue(ref cleanUnion, out cleanUnion);
             }else
             {
                 cleanUnion = executionStack.Pop();
@@ -125,6 +188,10 @@ public class VMInstance
             {
                 cleanUnion = new();
                 return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_TYPE_MISMATCH);  
+            }else if (stackValue.type == ValueUnion.ValueType.BooleanStack)
+            {
+                cleanUnion = executionStack.Pop();
+                return FetchValue(ref cleanUnion, out cleanUnion);
             }else
             {
                 cleanUnion = executionStack.Pop();
@@ -204,7 +271,6 @@ public class VMInstance
 
         if (cleanLeftUnion.type != cleanRightUnion.type)
         {
-            System.Console.WriteLine("This dude?");
             return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_TYPE_MISMATCH);
         }
         
@@ -260,11 +326,13 @@ public class VMInstance
         programCounter = pos;
     }
 
-    public ExecutionResult Execute(ref BytecodeInstruction instruction)
+    public ExecutionResult Execute(ref BytecodeInstruction instruction, out ValueUnion? resultValueUnionStuff)
     {
         // set cucc to 3 + 6
         // add 3, 6 -> on stack
         // set cucc <- from stack
+
+        resultValueUnionStuff = null;
 
         switch (instruction.instructionKind)
         {
@@ -300,6 +368,8 @@ public class VMInstance
                     var valueUnion = instruction.instruction.singleValueInstruction.valueUnion;
                     var result = FetchValue(ref valueUnion, out ValueUnion value);
 
+                    resultValueUnionStuff = value;
+
                     if (result.Ok)
                     {
                         if (value.type == ValueUnion.ValueType.Boolean)
@@ -323,11 +393,12 @@ public class VMInstance
 
                         if (cleanUnion.type != Variables[instruction.instruction.setInstruction.variableId].type)
                         {
-                            System.Console.WriteLine("This dude? 2");
                             return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_TYPE_MISMATCH);
                         }
 
+
                         set:
+                            resultValueUnionStuff = cleanUnion;
                             Variables[instruction.instruction.setInstruction.variableId] = cleanUnion;
                     }else
                     {
@@ -344,8 +415,7 @@ public class VMInstance
                     {
                         if (cleanUnion.type != ValueUnion.ValueType.Boolean)
                         {
-                            System.Console.WriteLine(cleanUnion.type);
-                            return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_TYPE_MISMATCH);
+                            return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_NON_BOOL_CONDITION);
                         }
 
                         if (cleanUnion.boolean)
@@ -367,6 +437,62 @@ public class VMInstance
                 break;
             case BytecodeInstruction.InstructionKind.Push:
                 executionStack.Push(instruction.instruction.singleValueInstruction.valueUnion);
+                break;
+
+            case BytecodeInstruction.InstructionKind.Not:
+                {
+                    var result = FetchValue(ref instruction.instruction.singleValueInstruction.valueUnion, out ValueUnion cleanValue);
+                    if (result.Ok)
+                    {
+                        if (cleanValue.type !=  ValueUnion.ValueType.Boolean)
+                            return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_TYPE_MISMATCH);
+                        
+                        cleanValue.boolean = !cleanValue.boolean;
+                        executionStack.Push(cleanValue);
+                    }else
+                    {
+                        return result;
+                    }
+                }
+                break;
+            case BytecodeInstruction.InstructionKind.Call:
+                {
+                    var result = FetchValue(ref instruction.instruction.singleValueInstruction.valueUnion, out ValueUnion cleanValue);
+                    if (result.Ok)
+                    {
+                        if (cleanValue.type != ValueUnion.ValueType.Number)
+                            return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_TYPE_MISMATCH);
+                        
+                        executionStack.Push(
+                            new ValueUnion
+                            {
+                                type = ValueUnion.ValueType.Boolean,
+                                boolean = Implementor.isThere(cleanValue.value)
+                            }
+                        );
+                        resultValueUnionStuff = executionStack.Peek();
+                    }else
+                    {
+                        return result;
+                    }
+                }
+                break;
+            case BytecodeInstruction.InstructionKind.Step:
+                {
+                    
+                }
+                break;
+
+            case BytecodeInstruction.InstructionKind.Turn:
+                {
+                    
+                }
+                break;
+
+            case BytecodeInstruction.InstructionKind.Mine:
+                {
+                    
+                }
                 break;
         }
 
