@@ -1,4 +1,7 @@
-﻿namespace Shared;
+﻿using System.IO;
+using System.Threading;
+
+namespace Shared;
 
 public class HandleInputFile
 {
@@ -53,5 +56,48 @@ public class HandleInputFile
             }
         }
         return Map;
+    }
+}
+
+public class HandleOutputFile : IDisposable
+{
+    private readonly StreamWriter _writer;
+    private readonly object _lock = new();
+    private bool _finished;
+
+    public HandleOutputFile(string outputPath)
+    {
+        var fs = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.None);
+        _writer = new StreamWriter(fs);
+        {
+            _writer.AutoFlush = true;
+        }
+    }
+
+    public void Log(string line)
+    {
+        lock (_lock)
+        {
+            if (_finished) return;
+            _writer.WriteLine(line);
+        }
+    }
+
+    public void Finish()
+    {
+        lock (_lock)
+        {
+            if (_finished) return;
+            _writer.WriteLine("EOR");
+            _finished = true;
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (_lock)
+        {
+            _writer.Dispose();
+        }
     }
 }
