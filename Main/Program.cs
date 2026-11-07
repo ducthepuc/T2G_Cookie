@@ -23,7 +23,7 @@ internal class Program
         using var logger = new HandleOutputFile("output.log");
         logger.Log("Test line 1");
         logger.Log("Test line 2");
-        logger.Finish();
+        logger.Finish(false);
         Console.WriteLine("Log test written to output.log");
     }
 }
