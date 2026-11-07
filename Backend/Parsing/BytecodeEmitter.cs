@@ -18,7 +18,8 @@ public class BytecodeEmitter
         var body = ParseBody(astRoot, variables, bodies, -1);
         body.Add(new BytecodeInstruction
         {
-            instructionKind = BytecodeInstruction.InstructionKind.End
+            instructionKind = BytecodeInstruction.InstructionKind.End,
+            metadata = BytecodeInstruction.MakeMetadata(-1, true)
         });
 
         BytecodeEmitter emitter = new BytecodeEmitter
@@ -96,7 +97,7 @@ public class BytecodeEmitter
     // de az ast még nestelve adja vissza, ézért lényegében pl a 2+2 először egy add 2 2 lesz
     // ami pushol a stackbe, majd az igazi érték egy NumberStack, amely azt mondja a VM-nek hogy 
     // ne kiszámolja, hanem nézze meg hogy mégis mi van a stackben és poppolja mint egy jófijú
-    static (BytecodeInstruction[], ValueUnion) HandleValue(Value value, Variables variables)
+    static (BytecodeInstruction[], ValueUnion) HandleValue(Value value, Variables variables, int line)
     {
         if (value is BinOp binOp)
         {
@@ -106,8 +107,6 @@ public class BytecodeEmitter
             bool isBoolean = true;
             if (binOp.operation == BinOp.Operation.Add || binOp.operation == BinOp.Operation.Sub || binOp.operation == BinOp.Operation.Mul)
                 isBoolean = false;
-
-
 
             return ([
                 new BytecodeInstruction
@@ -133,12 +132,69 @@ public class BytecodeEmitter
                             left = valueUnionLeft,
                             right = valueUnionRight
                         }
-                    }
+                    },
+                    metadata = BytecodeInstruction.MakeMetadata(line, true)
                 }
             ], new ValueUnion
             {
                 type = isBoolean ? ValueUnion.ValueType.BooleanStack : ValueUnion.ValueType.NumberStack
             });
+        }
+
+        if (value is Not not)
+        {
+            (BytecodeInstruction[] instructions, ValueUnion valueUnion) = HandleValue(not.Value, variables, line);
+            return
+            (
+               [
+                    ..instructions,
+                    new BytecodeInstruction
+                    {
+                        instructionKind = BytecodeInstruction.InstructionKind.Not,
+                        instruction = new BytecodeInstruction.Instruction
+                        {
+                            singleValueInstruction = new BytecodeInstruction.Instruction.SingleValueInstruction
+                            {
+                                valueUnion = valueUnion
+                            }
+                        },
+                        metadata = BytecodeInstruction.MakeMetadata(-1, true)
+                    }
+               ],
+               new ValueUnion
+               {
+                   type = ValueUnion.ValueType.BooleanStack
+               }
+               
+            );
+        }
+
+        if (value is IsThere isThere)
+        {
+            (BytecodeInstruction[] instructions, ValueUnion valueUnion) = HandleValue(isThere.Arg, variables, line);
+            return
+            (
+               [
+                    ..instructions,
+                    new BytecodeInstruction
+                    {
+                        instructionKind = BytecodeInstruction.InstructionKind.Call,
+                        instruction = new BytecodeInstruction.Instruction
+                        {
+                            singleValueInstruction = new BytecodeInstruction.Instruction.SingleValueInstruction
+                            {
+                                valueUnion = valueUnion
+                            }
+                        },
+                        metadata = BytecodeInstruction.MakeMetadata(line, true)
+                    }
+               ],
+               new ValueUnion
+               {
+                   type = ValueUnion.ValueType.BooleanStack
+               }
+               
+            );
         }
 
         if (value is Literal || value is LiteralBool || value is Variable)
@@ -156,7 +212,7 @@ public class BytecodeEmitter
         {
             case StepInstruction stepInstruction:
                 {
-                    (BytecodeInstruction[] bytecodes, ValueUnion union) = HandleValue(stepInstruction.Value, variables);
+                    (BytecodeInstruction[] bytecodes, ValueUnion union) = HandleValue(stepInstruction.Value, variables, stepInstruction.Line);
                     return [
                         .. bytecodes,
                         new BytecodeInstruction
@@ -168,13 +224,14 @@ public class BytecodeEmitter
                                 {
                                     valueUnion = union
                                 }
-                            }
+                            },
+                            metadata = BytecodeInstruction.MakeMetadata(stepInstruction.Line, false)
                         }
                     ];
                 }
             case TurnInstruction turnInstruction:
                 {
-                    (BytecodeInstruction[] bytecodes, ValueUnion union) = HandleValue(turnInstruction.Value, variables);
+                    (BytecodeInstruction[] bytecodes, ValueUnion union) = HandleValue(turnInstruction.Value, variables, turnInstruction.Line);
                     return [
                         .. bytecodes,
                         new BytecodeInstruction
@@ -186,22 +243,24 @@ public class BytecodeEmitter
                                 {
                                     valueUnion = union
                                 }
-                            }
+                            },
+                            metadata = BytecodeInstruction.MakeMetadata(turnInstruction.Line, false)
                         }
                     ];
                 }
-            case MineInstruction:
+            case MineInstruction mineInstruction:
                 {
                     return [
                         new BytecodeInstruction
                         {
-                            instructionKind = BytecodeInstruction.InstructionKind.Mine
+                            instructionKind = BytecodeInstruction.InstructionKind.Mine,
+                            metadata = BytecodeInstruction.MakeMetadata(mineInstruction.Line, false)
                         }
                     ];
                 }
             case PrintInstruction printInstruction:
                 {
-                    (BytecodeInstruction[] bytecodes, ValueUnion union) = HandleValue(printInstruction.Value, variables);
+                    (BytecodeInstruction[] bytecodes, ValueUnion union) = HandleValue(printInstruction.Value, variables, printInstruction.Line);
                     return [
                         ..bytecodes,
                         new BytecodeInstruction
@@ -213,14 +272,15 @@ public class BytecodeEmitter
                                 {
                                     valueUnion = union
                                 }
-                            }
+                            },
+                            metadata = BytecodeInstruction.MakeMetadata(printInstruction.Line, false)
                         }
                     ];
                 }
             case SetInstruction setInstruction:
                 {
                     string var = setInstruction.variableName;
-                    (BytecodeInstruction[] bytecodes, ValueUnion union) = HandleValue(setInstruction.Value, variables);
+                    (BytecodeInstruction[] bytecodes, ValueUnion union) = HandleValue(setInstruction.Value, variables, setInstruction.Line);
 
                     if (!variables.ContainsKey(var))
                     {
@@ -241,13 +301,14 @@ public class BytecodeEmitter
                                     variableId = variables[var],
                                     value = union
                                 }
-                            }
+                            },
+                            metadata = BytecodeInstruction.MakeMetadata(setInstruction.Line, false)
                         }
                     ];
                 }
             case IfInstruction ifInstruction:
                 {
-                    (BytecodeInstruction[] conditionInstructions, ValueUnion valueUnion) = HandleValue(ifInstruction.Expression, variables);
+                    (BytecodeInstruction[] conditionInstructions, ValueUnion valueUnion) = HandleValue(ifInstruction.Expression, variables, ifInstruction.Line);
                     int conditionId = bodies.Count;
                     int bodyId = bodies.Count + 1;
                     int elseBody = bodies.Count + 2;
@@ -256,7 +317,7 @@ public class BytecodeEmitter
                     [
                         ..conditionInstructions,
                         BytecodeInstruction.Push(valueUnion),
-                        BytecodeInstruction.If(bodyId, true, elseBody),
+                        BytecodeInstruction.If(bodyId, true, elseBody, ifInstruction.Line),
                     ];
 
                     bodies[bodyId] = [];
@@ -282,7 +343,7 @@ public class BytecodeEmitter
             // Nem is létezik bytecode-ban, 
             case WhileInstruction whileInstruction:
                 {
-                    (BytecodeInstruction[] conditionInstructions, ValueUnion valueUnion) = HandleValue(whileInstruction.Expression, variables);
+                    (BytecodeInstruction[] conditionInstructions, ValueUnion valueUnion) = HandleValue(whileInstruction.Expression, variables, whileInstruction.Line);
                     int conditionId = bodies.Count;
                     int bodyId = bodies.Count + 1;
                     int exitId = bodies.Count + 2;
@@ -295,7 +356,7 @@ public class BytecodeEmitter
                     [
                         ..conditionInstructions,
                         BytecodeInstruction.Push(valueUnion),
-                        BytecodeInstruction.If(bodyId, true, exitId),
+                        BytecodeInstruction.If(bodyId, true, exitId, whileInstruction.Line, true),
                     ];
 
                     var bodyInstructions = ParseBody(whileInstruction.body, variables, bodies, bodyId);
