@@ -4,11 +4,14 @@ using Raylib_CsLo;
 namespace T2G_Cookie.Gui;
 
 /// <summary>
-/// Where variable names come from: three read-only built-ins (the cell kinds, so
-/// `isThere wall` reads naturally) plus everything the user creates.
+/// Where variable names come from: everything the user creates. The three cell kinds
+/// are not variables - they have their own blocks in the Sensing palette - but their
+/// names stay reserved: they never appear in the dropdown, they can't be created, and
+/// a hand-built reporter named after one still converts to the literal it stands for.
 /// </summary>
 sealed class VariableRegistry
 {
+    /// <summary>The cell kinds `isThere` reads, by MineCode name.</summary>
     public static readonly string[] BuiltinNames = ["empty", "wall", "gold"];
     static readonly Dictionary<string, int> BuiltinValues = new()
     {
@@ -17,15 +20,46 @@ sealed class VariableRegistry
         ["gold"] = 2
     };
 
-    readonly List<string> _names = new(BuiltinNames);
+    readonly List<string> _names = new();
 
+    /// <summary>The creatable variables, in menu order. Cell kinds are never listed.</summary>
     public IReadOnlyList<string> Names => _names;
 
+    /// <summary>True for the cell kind names, which are known but not variables.</summary>
     public bool IsBuiltin(string name) => BuiltinValues.ContainsKey(name);
-    public bool Contains(string name) => _names.Contains(name);
+
+    /// <summary>Known means listed as a variable, or standing for a cell kind.</summary>
+    public bool Contains(string name) => _names.Contains(name) || IsBuiltin(name);
 
     /// <summary>The cell code a built-in stands for, or -1 when the name isn't a built-in.</summary>
     public int GetBuiltinValue(string name) => BuiltinValues.GetValueOrDefault(name, -1);
+
+    /// <summary>The Sensing block kind a cell name gets, or null when it isn't a cell.</summary>
+    public static BlockKind? CellKind(string name) => name switch
+    {
+        "empty" => BlockKind.Empty,
+        "wall" => BlockKind.Wall,
+        "gold" => BlockKind.Gold,
+        _ => null
+    };
+
+    /// <summary>The block kind for a literal cell code (0/1/2), or null when the
+    /// number isn't a cell - derived from the same table the name lookup reads.</summary>
+    public static BlockKind? CellKindOfValue(long value)
+    {
+        foreach ((string name, int code) in BuiltinValues)
+            if (code == value) return CellKind(name);
+        return null;
+    }
+
+    /// <summary>The cell name a cell block kind stands for.</summary>
+    public static string CellName(BlockKind kind) => kind switch
+    {
+        BlockKind.Empty => "empty",
+        BlockKind.Wall => "wall",
+        BlockKind.Gold => "gold",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "not a cell kind")
+    };
 
     /// <summary>MineCode identifiers: [a-zA-Z][a-zA-Z0-9]* (see MineCodeLexer.g4).</summary>
     public static bool IsValidName(string name)
@@ -36,6 +70,11 @@ sealed class VariableRegistry
         if (!IsValidName(name))
         {
             error = "names start with a letter, then letters/digits";
+            return false;
+        }
+        if (IsBuiltin(name))
+        {
+            error = $"{name} is a cell type, pick another name";
             return false;
         }
         if (_names.Contains(name))

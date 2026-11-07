@@ -44,6 +44,16 @@ static class Theme
     public const int StartButtonH = 28;
     public const int BadgeRadius = 7;
 
+    // the save button shares Start's metrics but stays grey: it reports no state
+    public const int SaveButtonW = StartButtonW;
+    public const int SaveButtonH = StartButtonH;
+    public const int ButtonGap = 8;
+
+    // print-output field under the bar: status line (3 + 12px text) plus a gap
+    public const int OutputTopGap = 21;
+    public const int OutputWPercent = 20;
+    public const int OutputHPercent = 10;
+
     // colors
     public static readonly Color WorkspaceBg = Rgb(240, 244, 255);
     public static readonly Color ToolboxBg = Rgb(255, 255, 255);
@@ -56,6 +66,7 @@ static class Theme
     public static readonly Color StartGreen = Rgb(57, 181, 74);
     public static readonly Color StartWarn = Rgb(232, 163, 61);
     public static readonly Color StartDisabled = Rgb(190, 196, 210);
+    public static readonly Color SaveGray = Rgb(143, 150, 165);
     public static readonly Color PlaceholderText = Rgb(150, 158, 178);
     public static readonly Color ScrollTrack = Rgb(235, 238, 245);
     public static readonly Color ScrollThumb = Rgb(190, 197, 214);

@@ -86,7 +86,13 @@ static class BlockLibrary
             .Add(() => new ReporterBlock([Seg.T("not "), Seg.V()], operators, Pos.Start, Pos.Start) { Kind = BlockKind.Not });
 
         sensing
-            .Add(() => new ReporterBlock([Seg.T("is there "), Seg.V()], sensing, Pos.Start, Pos.Start) { Kind = BlockKind.IsThere });
+            .Add(() => new ReporterBlock([Seg.T("is there "), Seg.V()], sensing, Pos.Start, Pos.Start) { Kind = BlockKind.IsThere })
+            // The cell kinds: the values isThere reads. Their own blocks here, not
+            // entries in the variable dropdown - each one converts to the literal
+            // cell code it stands for (empty=0, wall=1, gold=2).
+            .Add(() => new ReporterBlock([Seg.T("empty")], sensing, Pos.Start, Pos.Start) { Kind = BlockKind.Empty })
+            .Add(() => new ReporterBlock([Seg.T("wall")], sensing, Pos.Start, Pos.Start) { Kind = BlockKind.Wall })
+            .Add(() => new ReporterBlock([Seg.T("gold")], sensing, Pos.Start, Pos.Start) { Kind = BlockKind.Gold });
 
         return new List<BlockCategory> { motion, output, control, variables, values, operators, sensing };
     }

@@ -1,6 +1,7 @@
 using System.Numerics;
 using System.Reflection;
 using Raylib_CsLo;
+using Shared;
 using T2G_Cookie.Backend.Parsing;
 using T2G_Cookie.Gui;
 using T2G_Cookie.Shared.Ast;
@@ -19,6 +20,28 @@ static class SelfTest
     static int _checks;
     static string _context = "";
     static bool _dumped;
+
+    /// <summary>The target script in its canonical MineCode form: what the backend
+    /// parser reads, what the writer emits, and what the loader has to rebuild.</summary>
+    const string TargetSource =
+"""
+set arany to isThere 2
+print arany
+set count to 0
+set fal to isThere 1
+set megy to not fal
+while megy
+    set arany to isThere 2
+    if arany
+        step forward 1
+        mine here
+        set count to count + 1
+    else
+        step forward 1
+        set fal to isThere 1
+        set megy to not fal
+print count
+""";
 
     static void Main()
     {
@@ -39,6 +62,8 @@ static class SelfTest
             Run("Click vs drag threshold", TestPressClickVsDrag);
             Run("Variable dropdown and name prompt", TestDropdowns);
             Run("Golden AST for the target script", TestGoldenAst);
+            Run("Loading a parsed file into blocks", TestLoadRoundTrip);
+            Run("Saving the script back to the input file", TestSave);
             Run("Palette covers the whole language", TestPaletteParity);
             Run("Every operator maps to the backend AST", TestOperatorParity);
             Run("Built-in cell kinds are literals", TestBuiltins);
@@ -596,12 +621,22 @@ static class SelfTest
         var literalKinds = values.Factories.Select(f => f().Kind).ToHashSet();
         Check(literalKinds.SetEquals(new[] { BlockKind.Number, BlockKind.Boolean }),
             "the Value category holds number + true + false and nothing else");
-        Check(categories.Single(c => c.Name == "Sensing").Factories
-                .All(f => f().Kind == BlockKind.IsThere),
-            "Sensing holds just the is-there function");
+        // `is there` plus the three cell blocks: the cells are values for the sensing
+        // function, never entries in the variable dropdown.
+        var sensingKinds = categories.Single(c => c.Name == "Sensing").Factories
+            .Select(f => f().Kind).ToHashSet();
+        Check(sensingKinds.SetEquals(new[]
+                { BlockKind.IsThere, BlockKind.Empty, BlockKind.Wall, BlockKind.Gold }),
+            "Sensing holds is-there plus the three cell blocks");
+        Check(!categories.Single(c => c.Name == "Sensing").Factories
+                .Any(f => f().Kind == BlockKind.Variable),
+            "no variable reporter hides in Sensing");
         Check(categories.Single(c => c.Name == "Variables").Factories
                 .Any(f => f().Kind == BlockKind.Variable),
             "variable references stay in Variables");
+        Check(categories.Single(c => c.Name == "Variables").Factories
+                .All(f => f().Kind is BlockKind.Set or BlockKind.Variable),
+            "the cell blocks are not part of the variable group");
 
         var kinds = new HashSet<BlockKind>();
         int factories = 0;
@@ -801,6 +836,12 @@ static class SelfTest
         Healthy(ws, "set added");
         Check(set.Slots[0].SelectedName == null, "a fresh name field is unset");
 
+        // The menu lists only what the registry holds - and never the cell kinds.
+        Check(ws.Registry.TryCreate("count", out _), "registered count");
+        Check(ws.Registry.Contains("wall") && ws.Registry.IsBuiltin("wall"),
+            "a cell kind is known but was never registered as a variable");
+        Check(!ws.Registry.Names.Contains("wall"), "cell kinds stay out of the menu");
+
         // A name field is a dropdown, not a drag handle.
         Rectangle nameField = set.Slots[0].Bounds;
         Check(ws.HandlePress(new Vector2(nameField.X + 4, nameField.Y + 4), out _) == null,
@@ -808,7 +849,7 @@ static class SelfTest
         Check(ws.Menu.IsOpen, "pressing a name field opens its menu");
         ws.Menu.Close();
 
-        // --- pick an existing variable (built-ins are greyed, not dead) ----
+        // --- pick an existing variable ------------------------------------
         ws.HandleClick(set, set.Slots[0]);
         Check(ws.Menu.IsOpen, "the name field opened the menu");
 
@@ -818,7 +859,7 @@ static class SelfTest
         Check(ws.Menu.Picked == ws.Registry.Names[0], "row 0 is the first registry name");
         ws.ApplyDropPicked();
         Check(set.Slots[0].SelectedName == ws.Registry.Names[0],
-            "a muted built-in row is still selectable");
+            "the first registered row went into the field");
         Check(!ws.Menu.IsOpen, "the menu closed after the pick");
 
         // --- "Make a variable..." ----------------------------------------
@@ -860,6 +901,15 @@ static class SelfTest
         foreach (char c in "arany") ws.Prompt.InputChar(c);
         Check(!ws.ConfirmPrompt(), "creating the same name twice is refused");
         Check(ws.Prompt.Error != null, "the duplicate is explained");
+        ws.Prompt.Close();
+
+        // --- cell kinds stay reserved -------------------------------------
+        ws.Prompt.Open(8, 8);
+        foreach (char c in "wall") ws.Prompt.InputChar(c);
+        Check(!ws.ConfirmPrompt(), "a cell kind can't become a variable");
+        Check(ws.Prompt.Error != null && ws.Prompt.Error.Contains("cell"),
+            "the refusal says it's a cell type");
+        Check(!ws.Registry.Names.Contains("wall"), "wall is not in the variable list");
         ws.Prompt.Close();
 
         ws.Update(0, 0);
@@ -999,28 +1049,8 @@ static class SelfTest
         Check(result.Scripts[0].Instructions.Length == 7, "seven top-level instructions");
 
         // --- parity with Backend/MineCode -----------------------------------
-        const string targetSource =
-"""
-set arany to isThere 2
-print arany
-set count to 0
-set fal to isThere 1
-set megy to not fal
-while megy
-    set arany to isThere 2
-    if arany
-        step forward 1
-        mine here
-        set count to count + 1
-    else
-        step forward 1
-        set fal to isThere 1
-        set megy to not fal
-print count
-""";
-
         string code = MineCodeWriter.Write(result.Scripts[0]);
-        Check(Normalize(code) == Normalize(targetSource), "the AST writes back as the target MineCode");
+        Check(Normalize(code) == Normalize(TargetSource), "the AST writes back as the target MineCode");
         Check(result.ToMineCode() == code, "AstResult exposes the generated source");
 
         Body reparsed;
@@ -1047,6 +1077,159 @@ print count
 
     static string Normalize(string text) =>
         text.Replace("\r\n", "\n").Replace("\r", "\n").TrimEnd('\n');
+
+    /// <summary>
+    /// The load path a file takes: source text → backend parser → Shared AST →
+    /// AstLoader blocks → AstConverter AST again. The rebuilt workspace has to be a
+    /// healthy forest that converts with no problems and no lost line numbers.
+    /// </summary>
+    static void TestLoadRoundTrip()
+    {
+        Workspace ws = NewWorkspace();
+
+        Body parsed;
+        TextWriter originalOut = Console.Out;
+        try
+        {
+            // The backend parser dumps its parse tree; keep the test log readable.
+            Console.SetOut(TextWriter.Null);
+            parsed = MineCode.ParseCode(TargetSource);
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+        }
+
+        List<string> problems = AstLoader.Load(ws, [parsed]);
+        Check(problems.Count == 0,
+            "the loader reported no problems, got: " + string.Join(" | ", problems));
+
+        Healthy(ws, "after loading the parsed script");
+        Check(Roots(ws).Count == 1, "the file loaded as one root stack");
+        Check(ws.HasStartBlock, "the loaded stack starts with the Start hat");
+        Check(ws.Registry.Contains("arany") && ws.Registry.Contains("count") &&
+              ws.Registry.Contains("fal") && ws.Registry.Contains("megy"),
+            "the variables the file uses were registered on the way in");
+
+        ws.Update(0, 0);
+        Healthy(ws, "after the first layout pass");
+        Check(Roots(ws)[0].X >= 0 && Roots(ws)[0].Y >= 0, "the loaded script was placed inside the workspace");
+
+        AstResult result = ws.RunStart();
+        string errors = string.Join(" | ", result.Errors.Select(e => $"[{e.Block.Label}] {e.Message}"));
+        Check(result.Errors.Count == 0, $"the loaded script converts cleanly, got: {errors}");
+        Check(result.Scripts.Length == 1, "one script came out");
+        Check(Same(result.Scripts[0], parsed), "load → blocks → convert is the same AST, lines included");
+
+        // The file writes isThere's argument as its cell code; the blocks show the
+        // Sensing cell blocks for those codes.
+        var loadedKinds = Roots(ws).SelectMany(r => r.Flatten()).Select(b => b.Kind).ToHashSet();
+        Check(loadedKinds.Contains(BlockKind.Gold) && loadedKinds.Contains(BlockKind.Wall),
+            "isThere 2 / isThere 1 rebuilt as the gold / wall blocks");
+
+        // Round it back to source: the editor's own writer has to reproduce the file.
+        Check(Normalize(MineCodeWriter.Write(result.Scripts[0])) == Normalize(TargetSource),
+            "the loaded script writes back as the source it came from");
+
+        // A file that names a cell in text - or gives isThere its cell code as a
+        // number - rebuilds as the Sensing block, and still writes back as the
+        // cell value it stands for.
+        Workspace cells = NewWorkspace();
+        Body cellScript;
+        try
+        {
+            Console.SetOut(TextWriter.Null);
+            cellScript = MineCode.ParseCode("print isThere wall\nprint isThere 0\n");
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+        }
+
+        List<string> cellProblems = AstLoader.Load(cells, [cellScript]);
+        Check(cellProblems.Count == 0,
+            "the cell script loaded cleanly, got: " + string.Join(" | ", cellProblems));
+        Healthy(cells, "after loading the cell script");
+        var cellKinds = Roots(cells).SelectMany(r => r.Flatten()).Select(b => b.Kind).ToHashSet();
+        Check(cellKinds.Contains(BlockKind.Wall), "isThere wall rebuilt as the wall block");
+        Check(cellKinds.Contains(BlockKind.Empty), "isThere 0 rebuilt as the empty block");
+        Check(!cellKinds.Contains(BlockKind.Number), "no number block stands in for a cell code");
+
+        AstResult cellResult = cells.RunStart();
+        Check(cellResult.Errors.Count == 0, "the cell script converts cleanly");
+        Check(Normalize(MineCodeWriter.Write(cellResult.Scripts[0])) ==
+              "print isThere 1\nprint isThere 0",
+            "the cell blocks write back as their cell values");
+    }
+
+    /// <summary>
+    /// Save: converts the workspace, writes through the shared file handler in the
+    /// input format (header, map rows, code), refuses without a script or a file,
+    /// and parks itself to the left of Start.
+    /// </summary>
+    static void TestSave()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"guiselftest-save-{Guid.NewGuid():N}.txt");
+        try
+        {
+            // A minimal input file: header, one map row, one instruction.
+            File.WriteAllLines(path, ["1 1", ".", "print 1"]);
+            HandleInputFile handler = new(path);
+            Check(handler.Code.Count == 1 && handler.Code[0] == "print 1", "the sample file reads");
+
+            Workspace ws = NewWorkspace();
+            Body script;
+            TextWriter originalOut = Console.Out;
+            try
+            {
+                Console.SetOut(TextWriter.Null);
+                script = MineCode.ParseCode(string.Join("\n", handler.Code));
+            }
+            finally
+            {
+                Console.SetOut(originalOut);
+            }
+
+            List<string> problems = AstLoader.Load(ws, [script]);
+            Check(problems.Count == 0,
+                "the script loaded, got: " + string.Join(" | ", problems));
+
+            ws.SaveScript = handler.Write;
+            Check(ws.Save(), "saving the loaded script works");
+
+            HandleInputFile reloaded = new(path);
+            Check(reloaded.Map != null && reloaded.Map.GetLength(0) == 1 && reloaded.Map[0, 0] == '.',
+                "the map survived the save");
+            Check(string.Join("\n", reloaded.Code) == "print 1",
+                "the code round trips through the file");
+
+            // Save sits to the left of Start, on the same row.
+            ws.Update(0, 0);
+            Check(ws.SaveButton.Bounds.X + ws.SaveButton.Bounds.width <= ws.StartButton.Bounds.X &&
+                  ws.SaveButton.Bounds.Y == ws.StartButton.Bounds.Y,
+                "Save sits to the left of Start");
+
+            // No Start block: nothing to write.
+            string? saved = null;
+            Workspace bare = NewWorkspace();
+            bare.SaveScript = s => saved = s;
+            Check(!bare.Save() && saved == null, "a workspace without a Start block saves nothing");
+
+            // No input file: refused even with a script.
+            Workspace noFile = NewWorkspace();
+            HatBlock hat = (HatBlock)ByKind(BlockKind.Start);
+            StackBlock print = (StackBlock)ByKind(BlockKind.Print);
+            Check(print.AttachToSlot(print.Slots[0], Num(7)), "print took its number");
+            Check(hat.Append(print), "print chained");
+            noFile.AddRootBlock(hat, new Vector2(60, 60));
+            Check(!noFile.Save(), "saving is refused when no file was loaded");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
 
     /// <summary>
     /// The palette is the whole language surface: every BlockKind except the UI-only
@@ -1156,6 +1339,30 @@ print count
         Check(Normalize(MineCodeWriter.Write(result.Scripts[0])) ==
               "print 1\nprint arany\nprint isThere 2",
             "wall/gold become their cell values and user variables stay references");
+
+        // The Sensing cell blocks are the palette's way to spell those literals:
+        // each one converts to the cell code its name stands for.
+        foreach ((BlockKind kind, string name) in new[]
+                 { (BlockKind.Empty, "empty"), (BlockKind.Wall, "wall"), (BlockKind.Gold, "gold") })
+        {
+            Workspace cellWs = NewWorkspace();
+            HatBlock cellHat = (HatBlock)ByKind(BlockKind.Start);
+            cellWs.AddRootBlock(cellHat, new Vector2(60, 60));
+
+            StackBlock printCell = (StackBlock)ByKind(BlockKind.Print);
+            Check(printCell.AttachToSlot(printCell.Slots[0], ByKind(kind)),
+                $"{name}: print took the cell block");
+            Check(cellHat.Append(printCell), $"{name}: chained");
+
+            AstResult cellResult = AstConverter.Convert(cellWs);
+            Check(cellResult.Errors.Count == 0, $"{name}: converts cleanly");
+            long expected = ws.Registry.GetBuiltinValue(name);
+            Check(cellResult.Scripts[0].Instructions[0] is PrintInstruction { Value: Literal cell } &&
+                  cell.value == expected,
+                $"{name}: maps to Literal({expected})");
+            Check(Normalize(MineCodeWriter.Write(cellResult.Scripts[0])) == $"print {expected}",
+                $"{name}: renders as 'print {expected}'");
+        }
     }
 
     /// <summary>Number and boolean reporters cover the two literal atoms in the grammar.</summary>
@@ -1256,6 +1463,15 @@ print count
 
         ws.Update(0, 0);
 
+        // The print-output field: 20% x 10%, flush with the bar's right edge, under it.
+        Check(ws.Output.WPercent == 20 && ws.Output.HPercent == 10, "the output field is 20% x 10%");
+        Check(ws.Output.X + ws.Output.Width == ws.StartButton.X + ws.StartButton.Width,
+            "the output field's right edge lines up with the bar buttons");
+        Check(ws.Output.Y >= ws.StartButton.Y + ws.StartButton.Height &&
+              ws.Output.Y >= ws.SaveButton.Y + ws.SaveButton.Height,
+            "the output field sits under the save/start bar");
+        Check(ws.Output.Lines.Count == 0, "the output field starts empty");
+
         var toolbox = new Toolbox(() => 0, () => 0, 0, 100, BlockLibrary.CreateCategories());
         toolbox.Update(0, 0);
 
@@ -1263,6 +1479,10 @@ print count
         ws.HandleClick(set, set.Slots[0]);
         ws.Prompt.Open(8, 8);
         ws.Prompt.InputChar('x');
+
+        // One line in the output field, so this pass draws its text path too and
+        // not just the empty-state hint.
+        ws.Output.Lines.Add("print 1");
 
         Raylib.BeginDrawing();
         Raylib.ClearBackground(Raylib.WHITE);

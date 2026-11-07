@@ -5,11 +5,17 @@ namespace Shared;
 
 public class HandleInputFile
 {
+    private readonly string _fileName;
+
     public List<string> Code { get; private set; }
     public char[,]? Map { get; private set; }
-    
+
+    /// <summary>The file this handler reads from and writes back to.</summary>
+    public string FileName => _fileName;
+
     public HandleInputFile(string fileName)
     {
+        _fileName = fileName;
         Code = [];
         ReadFile(fileName);
     }
@@ -56,6 +62,35 @@ public class HandleInputFile
             }
         }
         return Map;
+    }
+
+    /// <summary>
+    /// Writes the file back in the format <see cref="ReadFile"/> takes: the rows/cols
+    /// header, the map rows, then the code - so a saved script reads back exactly like
+    /// the file it came from. Blank lines are dropped; they would be read back as code.
+    /// </summary>
+    public void Write(string source)
+    {
+        int rows = Map?.GetLength(0) ?? 0;
+        int cols = Map?.GetLength(1) ?? 0;
+
+        var lines = new List<string> { $"{rows} {cols}" };
+        for (int r = 0; r < rows; r++)
+        {
+            var row = new char[cols];
+            for (int c = 0; c < cols; c++)
+                row[c] = Map![r, c];
+            lines.Add(new string(row));
+        }
+
+        // The rendered source may use \r\n; strip the CR so lines read back clean.
+        foreach (string line in source.Split('\n'))
+        {
+            string clean = line.TrimEnd('\r');
+            if (clean.Length > 0) lines.Add(clean);
+        }
+
+        File.WriteAllLines(_fileName, lines);
     }
 }
 

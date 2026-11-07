@@ -267,6 +267,13 @@ static class AstConverter
                         : new Variable(name);
                 }
 
+            // The cell blocks in the Sensing palette: each stands for its literal
+            // cell code, so `isThere wall` is exactly `isThere 1`.
+            case BlockKind.Empty:
+            case BlockKind.Wall:
+            case BlockKind.Gold:
+                return new Literal(ctx.Registry.GetBuiltinValue(VariableRegistry.CellName(b.Kind)));
+
             case BlockKind.IsThere:
                 return new IsThere(AsSimple(ValueOf(b, 0, ctx), b, ctx));
             case BlockKind.Not:

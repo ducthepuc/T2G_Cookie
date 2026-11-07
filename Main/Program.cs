@@ -1,5 +1,7 @@
 ﻿using Shared;
+using T2G_Cookie.Backend.Parsing;
 using T2G_Cookie.Gui;
+using T2G_Cookie.Shared.Ast;
 
 namespace T2G_Cookie.Main;
 
@@ -12,11 +14,12 @@ internal class Program
 {
     static void Main(string[] args)
     {
+        HandleInputFile? input = null;
         if (TryReadFile(args, out string? fileName))
         {
-            HandleInputFile handler = new(fileName!);
-            Console.WriteLine($"Code lines: {handler.Code.Count}");
-            Console.WriteLine($"Map: {(handler.Map != null ? $"{handler.Map.GetLength(0)}x{handler.Map.GetLength(1)}" : "null")}");
+            input = new HandleInputFile(fileName!);
+            Console.WriteLine($"Code lines: {input.Code.Count}");
+            Console.WriteLine($"Map: {(input.Map != null ? $"{input.Map.GetLength(0)}x{input.Map.GetLength(1)}" : "null")}");
 
             using var logger = new HandleOutputFile("output.log");
             logger.Log("Test line 1");
@@ -44,7 +47,35 @@ internal class Program
         app.Toolbox = toolbox;
         app.Workspace = workspace;
 
+        // The window is open now, so the loader can measure text while it builds blocks.
+        if (input != null)
+        {
+            LoadScript(workspace, input.Code);
+
+            // The Save button writes the rendered script back through the same handler,
+            // in the format the reader takes (header, map rows, code).
+            workspace.SaveScript = input.Write;
+        }
+
         app.Run();
+    }
+
+    /// <summary>Parses the loaded lines as MineCode and rebuilds them as blocks in the
+    /// workspace; a program the parser can't read is reported, never thrown.</summary>
+    static void LoadScript(Workspace workspace, List<string> code)
+    {
+        if (code.Count == 0) return;
+
+        try
+        {
+            Body script = MineCode.ParseCode(string.Join("\n", code));
+            foreach (string problem in AstLoader.Load(workspace, [script]))
+                Console.WriteLine("load: " + problem);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("could not load the script: " + ex.Message);
+        }
     }
 
     /// <summary>Resolves the input file from the args (`-q` takes the next argument as

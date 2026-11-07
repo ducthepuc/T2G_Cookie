@@ -105,7 +105,20 @@ public sealed class Workspace : Frame
     internal NumberBlock? Editing => _editing;
     internal AstResult Validation => _validation;
 
+    /// <summary>Where the Save button writes: the host wires it to the input file
+    /// when one was given; null means there is no file to save to.</summary>
+    internal Action<string>? SaveScript { get; set; }
+
     readonly StartButton _start;
+    readonly SaveButton _save;
+    readonly OutputField _output;
+    bool _overSave;
+
+    internal SaveButton SaveButton => _save;
+    internal StartButton StartButton => _start;
+
+    /// <summary>The 20% x 10% field under the bar buttons where Print output will show.</summary>
+    internal OutputField Output => _output;
 
     /// <summary>Exactly one "Start clicked" hat may exist; the toolbox greys its item out.</summary>
     internal bool HasStartBlock => _roots.Any(r => r is HatBlock);
@@ -116,6 +129,22 @@ public sealed class Workspace : Frame
         Color = Theme.WorkspaceBg;
         _start = new StartButton();
         AddChild(_start);
+
+        // Save sits to the left of Start and follows it; the resolvers re-read Start's
+        // position on every access, so resizing the window keeps the pair aligned.
+        _save = new SaveButton(
+            () => Pos.Left(_start)() - Theme.SaveButtonW - Theme.ButtonGap,
+            Pos.Top(_start));
+        AddChild(_save);
+
+        // The print-output panel hangs under the whole bar (buttons + status line) and
+        // shares the bar's right edge: its x resolves from Pos.Right(_start) minus the
+        // panel's screen width, so the two stay flush through resizes.
+        _output = new OutputField(
+            () => Pos.Right(_start)() - Dim.GetWSize(Theme.OutputWPercent),
+            () => Pos.Bottom(_start)() + Theme.OutputTopGap,
+            Theme.OutputWPercent, Theme.OutputHPercent);
+        AddChild(_output);
     }
 
     internal void AddRootBlock(Block block, Vector2 screenMouse)
@@ -135,6 +164,22 @@ public sealed class Workspace : Frame
         block.Detach();
         _roots.Remove(block);
         block.UnregisterTree();
+    }
+
+    /// <summary>
+    /// Adopts a pre-built chain at workspace-local coordinates: no snap, no clamp, so a
+    /// script loaded from a file lands exactly where the loader put it. Every block is
+    /// parented to the workspace - Element.UpdateAll/DrawAll only skip children, so a
+    /// chain that never went through Drop would be drawn a second time at its raw
+    /// coordinates.
+    /// </summary>
+    internal void LoadRoot(Block root, int localX, int localY)
+    {
+        foreach (Block block in root.Flatten())
+            block.Parent = this;
+
+        root.Layout(localX, localY);
+        _roots.Add(root);
     }
 
     public override void Update(int offsetX, int offsetY)
@@ -166,15 +211,22 @@ public sealed class Workspace : Frame
         Vector2 localMouse = mouse - new Vector2(_screenX, _screenY);
         bool released = Raylib.IsMouseButtonReleased(MouseButton.MOUSE_BUTTON_LEFT);
         bool pressed = Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT);
-        bool overStart = _drag == null && !_prompt.IsOpen && !_drop.IsOpen &&
-                         InsideRect(localMouse, _start.Bounds);
+        bool chromeBlocked = _drag == null && !_prompt.IsOpen && !_drop.IsOpen;
+        bool overStart = chromeBlocked && InsideRect(localMouse, _start.Bounds);
+        bool overSave = chromeBlocked && InsideRect(localMouse, _save.Bounds);
 
-        // The Start button is not a Block, so route its hover/cursor by hand.
+        // The bar buttons are not Blocks, so route their hover/cursor by hand.
         if (overStart != _overStart)
         {
             if (overStart) _start.OnHover();
             else _start.OnUnhover();
             _overStart = overStart;
+        }
+        if (overSave != _overSave)
+        {
+            if (overSave) _save.OnHover();
+            else _save.OnUnhover();
+            _overSave = overSave;
         }
 
         // Live validation: one walk per frame keeps badges, the dropdown and the Start
@@ -221,11 +273,17 @@ public sealed class Workspace : Frame
         //    the press landed (a click on release); past it the block follows.
         if (AdvanceDrag(localMouse, released)) return;
 
-        // 5. The Start button sits above the scripts and eats its own clicks.
+        // 5. The Start and Save buttons sit above the scripts and eat their own clicks.
         if (pressed && overStart)
         {
             CommitEditing();
             RunStart();
+            return;
+        }
+        if (pressed && overSave)
+        {
+            CommitEditing();
+            Save();
             return;
         }
 
@@ -331,6 +389,10 @@ public sealed class Workspace : Frame
         if (_roots.Count == 0 && _drag == null)
             Raylib.DrawText("Drag blocks here", screenX + 40, screenY + 40, 24, Theme.Border);
 
+        // The output field lives under the bar: drawn after the scripts so blocks
+        // never cover it, before the buttons so the bar stays on top of everything.
+        _output.Draw(screenX, screenY);
+        _save.Draw(screenX, screenY);
         _start.Draw(screenX, screenY);
         DrawStatus(screenX, screenY);
         Raylib.EndScissorMode();
@@ -575,6 +637,26 @@ public sealed class Workspace : Frame
         return _validation;
     }
 
+    /// <summary>Converts the workspace and hands the rendered source to the save
+    /// handler; false when there is no script or no input file to write to.</summary>
+    internal bool Save()
+    {
+        AstResult result = AstConverter.Convert(this);
+        if (result.Scripts.Length == 0)
+        {
+            Console.WriteLine("save: nothing to save (add a Start block)");
+            return false;
+        }
+        if (SaveScript == null)
+        {
+            Console.WriteLine("save: no input file to save to");
+            return false;
+        }
+
+        SaveScript(result.ToMineCode());
+        return true;
+    }
+
     // ------------------------------------------------------------------ badges --
 
     /// <summary>A one-line health readout under the Start button; the button colour says
@@ -785,5 +867,49 @@ sealed class StartButton : Element, IInteractable
             new Vector2(contentX + 8, centerY),
             textColor);
         Raylib.DrawText("Start", contentX + 12, centerY - 7, 14, textColor);
+    }
+}
+
+/// <summary>The workspace's save button: grey, parked to the left of Start by the same
+/// resolvers Start uses for its own anchoring. It reports no state, so it stays grey -
+/// hover and press only lighten/darken it like Start does.</summary>
+sealed class SaveButton : Element, IInteractable
+{
+    public override int Width { get; set; }
+    public override int Height { get; set; }
+    public override int WPercent { get; set; }
+    public override int HPercent { get; set; }
+
+    public bool IsHovered { get; set; }
+    public bool IsActivated { get; set; }
+
+    public Rectangle Bounds => new Rectangle(X, Y, Width, Height);
+
+    public SaveButton(Func<int> x, Func<int> y) : base(x, y)
+    {
+        Width = Theme.SaveButtonW;
+        Height = Theme.SaveButtonH;
+    }
+
+    public override void Update(int offsetX, int offsetY) { }
+
+    public void OnHover() { IsHovered = true; Raylib.SetMouseCursor(MouseCursor.MOUSE_CURSOR_POINTING_HAND); }
+    public void OnUnhover() { IsHovered = false; Raylib.SetMouseCursor(MouseCursor.MOUSE_CURSOR_ARROW); }
+    public void OnActivated() { IsActivated = true; }
+    public void OnDrag(Vector2 delta) { }
+
+    public override void Draw(int offsetX, int offsetY)
+    {
+        int x = X + offsetX;
+        int y = Y + offsetY;
+        Color color = Theme.SaveGray;
+        if (IsHovered) color = Theme.Lighten(color, 0.14f);
+        if (IsHovered && Raylib.IsMouseButtonDown(MouseButton.MOUSE_BUTTON_LEFT))
+            color = Theme.Darken(color, 0.1f);
+
+        Raylib.DrawRectangleRounded(new Rectangle(x, y, Width, Height), 0.45f, 8, color);
+
+        int textW = Raylib.MeasureText("Save", 14);
+        Raylib.DrawText("Save", x + (Width - textW) / 2, y + (Height - 14) / 2, 14, Raylib.WHITE);
     }
 }

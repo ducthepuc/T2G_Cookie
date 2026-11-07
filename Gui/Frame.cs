@@ -34,18 +34,11 @@ public class Frame : Element
         }
         public override void Update(int offsetX, int offsetY)
         {
-                int screenX = X + offsetX;
-                int screenY = Y + offsetY;
-
-                int containerW = Parent is Frame p ? p.Width : Raylib.GetScreenWidth();
-                int containerH = Parent is Frame p2 ? p2.Height : Raylib.GetScreenHeight();
-
                 // Size responds to the screen via Dim (percent of screen width/height).
                 Width = WPercent > 0 ? Dim.GetWSize(WPercent) : Width;
                 Height = HPercent > 0 ? Dim.GetHSize(HPercent) : Height;
 
-                int drawX = HAnchor == Anchor.End ? containerW - Width : screenX;
-                int drawY = VAnchor == Anchor.End ? containerH - Height : screenY;
+                (int drawX, int drawY) = ResolvePosition(offsetX, offsetY);
 
                 Vector2 mouse = Raylib.GetMousePosition();
                 bool over = mouse.X >= drawX && mouse.X < drawX + Width && mouse.Y >= drawY && mouse.Y < drawY + Height;
@@ -57,23 +50,30 @@ public class Frame : Element
                                 cf.Update(drawX - ScrollX, drawY - ScrollY);
         }
 
+        /// <summary>
+        /// Where this frame's top-left lands on screen. Start follows the offset chain
+        /// it was handed; End anchors to the container's far edge <i>within</i> that
+        /// chain, so a right-aligned child of a right-shifted parent still ends up
+        /// where the parent draws (the old End branch dropped the offset and pulled
+        /// such children back toward the window's origin).
+        /// </summary>
+        protected (int X, int Y) ResolvePosition(int offsetX, int offsetY)
+        {
+                int containerW = Parent is Frame p ? p.Width : Raylib.GetScreenWidth();
+                int containerH = Parent is Frame p2 ? p2.Height : Raylib.GetScreenHeight();
+
+                int x = HAnchor == Anchor.End ? offsetX + containerW - Width : X + offsetX;
+                int y = VAnchor == Anchor.End ? offsetY + containerH - Height : Y + offsetY;
+                return (x, y);
+        }
+
         public override void Draw(int offsetX, int offsetY)
         {
-                int screenW = Raylib.GetScreenWidth();
-                int screenH = Raylib.GetScreenHeight();
-
-                int screenX = X + offsetX;
-                int screenY = Y + offsetY;
-
-                int containerW = Parent is Frame p ? p.Width : screenW;
-                int containerH = Parent is Frame p2 ? p2.Height : screenH;
-
                 // Size responds to the screen via Dim (percent of screen width/height).
                 Width = WPercent > 0 ? Dim.GetWSize(WPercent) : Width;
                 Height = HPercent > 0 ? Dim.GetHSize(HPercent) : Height;
 
-                int drawX = HAnchor == Anchor.End ? containerW - Width : screenX;
-                int drawY = VAnchor == Anchor.End ? containerH - Height : screenY;
+                (int drawX, int drawY) = ResolvePosition(offsetX, offsetY);
 
                 int contentW = Width;
                 int contentH = Height;
