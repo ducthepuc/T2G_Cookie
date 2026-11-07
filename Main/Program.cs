@@ -17,7 +17,7 @@ internal class Program
             : args[0];
         Console.WriteLine(fileName);
         HandleInputFile handler = new HandleInputFile(fileName);
-        Console.WriteLine($"Code blocks: {handler.Code.Count}");
+        Console.WriteLine($"Code lines: {handler.Code.Count}");
         Console.WriteLine($"Map: {(handler.Map != null ? $"{handler.Map.GetLength(0)}x{handler.Map.GetLength(1)}" : "null")}");
     }
 }

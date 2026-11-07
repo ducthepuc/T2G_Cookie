@@ -26,6 +26,7 @@ public class HandleInputFile
         {
             string? mapLine = sr.ReadLine();
             if (mapLine == null) break;
+            
             for (int c = 0; c < mapLine.Length && c < cols; c++)
             {
                 Map[r, c] = mapLine[c];
@@ -35,8 +36,6 @@ public class HandleInputFile
         while (!sr.EndOfStream)
         {
             string? line = sr.ReadLine();
-            if (line == null) break;
-            
             if (mapIdentifiers.Any(line.StartsWith))
             {
                 if (currentRow < Map.GetLength(0))
@@ -47,10 +46,10 @@ public class HandleInputFile
                     }
                     currentRow++;
                 }
-                else
-                {
-                    Code.Add(line);
-                }
+            }
+            else
+            {
+                Code.Add(line);
             }
         }
         return Map;
