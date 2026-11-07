@@ -58,7 +58,6 @@ public class HandleInputFile
         return Map;
     }
 }
-
 public class HandleOutputFile : IDisposable
 {
     private readonly StreamWriter _writer;
@@ -67,11 +66,8 @@ public class HandleOutputFile : IDisposable
 
     public HandleOutputFile(string outputPath)
     {
-        var fs = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.None);
-        _writer = new StreamWriter(fs);
-        {
-            _writer.AutoFlush = true;
-        }
+        var fs = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
+        _writer = new StreamWriter(fs) { AutoFlush = true, NewLine = "\n" };
     }
 
     public void Log(string line)
@@ -88,8 +84,9 @@ public class HandleOutputFile : IDisposable
         lock (_lock)
         {
             if (_finished) return;
-            _writer.Write(exceeded ? "INSTRUCTION_COUNT_LIMIT_EXCEEDED" : "EOR");
+            _writer.WriteLine(exceeded ? "INSTRUCTION_COUNT_LIMIT_EXCEEDED" : "EOR");
             _finished = true;
+            _writer.Dispose();   // run is over, release the file
         }
     }
 
@@ -97,7 +94,8 @@ public class HandleOutputFile : IDisposable
     {
         lock (_lock)
         {
-            _writer.Dispose();
+            _finished = true;
+            _writer.Dispose();   // safe to call twice
         }
     }
 }
