@@ -17,8 +17,6 @@ public static class MineCode
 
         var root = parser.program();
 
-        Console.WriteLine(root.ToStringTree(parser));
-
         MineCodeVisitor visitor = new MineCodeVisitor();
 
         return visitor.VisitProgram(root);

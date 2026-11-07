@@ -300,33 +300,15 @@ public struct BytecodeInstruction
 
     public Metadata metadata;
 
-    public string format(ValueUnion evaluatedValue)
+    static string P(ValueUnion? v) => v is { } x ? " " + x : "";
+
+    public string format(ValueUnion? param, ValueUnion? ret)
     {
-        if (instructionKind == InstructionKind.Step)
-        {
-            return $" step forward {evaluatedValue}";
-        }
-
-        if (instructionKind == InstructionKind.Turn)
-        {
-            return $" turn by {evaluatedValue}";
-        }
-
-        if (instructionKind == InstructionKind.Mine)
-        {
-            return $" mine here";
-        }
-
-        if (instructionKind == InstructionKind.Print)
-        {
-            return $" print {evaluatedValue}";
-        }
-
-        if (instructionKind == InstructionKind.Call)
-        {
-            return $" isThere {instruction.singleValueInstruction.valueUnion.value} {evaluatedValue}";
-        }
-
+        if (instructionKind == InstructionKind.Step)  return $" step forward{P(param)}";
+        if (instructionKind == InstructionKind.Turn)  return $" turn by{P(param)}";
+        if (instructionKind == InstructionKind.Mine)  return " mine here";
+        if (instructionKind == InstructionKind.Print) return $" print{P(param)}";
+        if (instructionKind == InstructionKind.Call)  return $" isThere{P(param)}{P(ret)}";
         return "";
     }
 }

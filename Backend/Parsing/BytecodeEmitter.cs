@@ -158,7 +158,7 @@ public class BytecodeEmitter
                                 valueUnion = valueUnion
                             }
                         },
-                        metadata = BytecodeInstruction.MakeMetadata(-1, true)
+                        metadata = BytecodeInstruction.MakeMetadata(line, true)
                     }
                ],
                new ValueUnion
