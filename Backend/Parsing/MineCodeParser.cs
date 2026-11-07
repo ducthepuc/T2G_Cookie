@@ -23,4 +23,15 @@ public static class MineCode
 
         return visitor.VisitProgram(root);
     }
+
+    public static string[] Tokenize(string code)
+    {
+        AntlrInputStream stream = new AntlrInputStream(code);
+
+        MineCodeLexer lexer = new MineCodeLexer(stream);
+
+        CommonTokenStream tokenStream = new CommonTokenStream(lexer);
+
+        return tokenStream.GetTokens().Select(t => t.Text).ToArray();
+    }
 }
