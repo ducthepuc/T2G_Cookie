@@ -131,7 +131,8 @@ public struct ValueUnion
 
         if (type == ValueType.Boolean)
         {
-            return $"{boolean}";
+            string res = boolean ? "true" : "false";
+            return $"{res}";
         }
 
         if (type == ValueType.Variable)
@@ -204,6 +205,17 @@ public struct BytecodeInstruction
 
     };
 
+    public static BytecodeInstruction Nop(int line) => new()
+    {
+        instructionKind = InstructionKind.Nop,
+        metadata = new()
+        {
+            injected = false,
+            ifIsWhile = false,
+            line = line
+        }
+    };
+
 
     public enum InstructionKind : byte
     {
@@ -225,8 +237,10 @@ public struct BytecodeInstruction
         Ret,   // Pops the value from the stack. If that value is a number, it returns to Program counter to that number
 
         Push,   // nice and simple and used for a bit more direct stack manipulation purely from codegen
+        Nop,    // No- operation!
 
-        End    // marks the end of the program
+        End,    // marks the end of the program
+
     }
 
     interface IBCFormat
@@ -290,29 +304,28 @@ public struct BytecodeInstruction
     {
         if (instructionKind == InstructionKind.Step)
         {
-            return $"step forward {evaluatedValue}";
+            return $" step forward {evaluatedValue}";
         }
 
         if (instructionKind == InstructionKind.Turn)
         {
-            return $"turn by {evaluatedValue}";
+            return $" turn by {evaluatedValue}";
         }
 
         if (instructionKind == InstructionKind.Mine)
         {
-            return $"mine here";
+            return $" mine here";
         }
 
         if (instructionKind == InstructionKind.Print)
         {
-            return $"print {evaluatedValue}";
+            return $" print {evaluatedValue}";
         }
 
         if (instructionKind == InstructionKind.Call)
         {
-            return $"isThere {instruction.singleValueInstruction.valueUnion.value} {evaluatedValue}";
+            return $" isThere {instruction.singleValueInstruction.valueUnion.value} {evaluatedValue}";
         }
-
 
         return "";
     }

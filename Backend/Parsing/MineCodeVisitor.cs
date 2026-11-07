@@ -60,7 +60,11 @@ public class MineCodeVisitor : MineCodeParserBaseVisitor<object>
 
     public override Instruction VisitIfInstruction([NotNull] MineCodeParser.IfInstructionContext context)
     {
-        return new IfInstruction(VisitExpression(context.expression()), VisitBody(context.body()[0]), context.body().Length == 2 ? VisitBody(context.body()[1]) : null, context.Start.Line);
+        var mainBody = VisitBody(context.body()[0]);
+        var elseBody = context.body().Length == 2 ? VisitBody(context.body()[1]) : null;
+        return new IfInstruction(VisitExpression(context.expression()), 
+            mainBody, elseBody, 
+            context.Start.Line, elseBody != null ? context.ELSE().Symbol.Line : -1);
     }
 
     public override Instruction VisitWhileInstruction([NotNull] MineCodeParser.WhileInstructionContext context)

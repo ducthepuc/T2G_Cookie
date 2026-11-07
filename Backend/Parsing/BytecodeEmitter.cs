@@ -327,9 +327,12 @@ public class BytecodeEmitter
                     bodyInstructions.Add(BytecodeInstruction.Ret(currentLayer, resumePc));
                     bodies[bodyId] = bodyInstructions.ToArray();
 
-                    var elseInstructions = ifInstruction.elseBody != null 
-                        ? ParseBody(ifInstruction.elseBody, variables, bodies, elseBody) 
-                        : [];
+                    var elseInstructions = new List<BytecodeInstruction>();
+                    if (ifInstruction.elseBody != null)
+                    {
+                        elseInstructions.Add(BytecodeInstruction.Nop(ifInstruction.ElseLine)); // real, non-injected, line start
+                        elseInstructions.AddRange(ParseBody(ifInstruction.elseBody, variables, bodies, elseBody));
+                    }
                     elseInstructions.Add(BytecodeInstruction.Ret(currentLayer, resumePc));
                     bodies[elseBody] = elseInstructions.ToArray();
 
