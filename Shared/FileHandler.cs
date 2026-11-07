@@ -83,12 +83,12 @@ public class HandleOutputFile : IDisposable
         }
     }
 
-    public void Finish()
+    public void Finish(bool exceeded)
     {
         lock (_lock)
         {
             if (_finished) return;
-            _writer.WriteLine("EOR");
+            _writer.Write(exceeded ? "INSTRUCTION_COUNT_LIMIT_EXCEEDED" : "EOR");
             _finished = true;
         }
     }
