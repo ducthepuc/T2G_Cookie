@@ -45,6 +45,8 @@ sealed class VariableRegistry
         error = null;
         return true;
     }
+
+    public bool Remove(string name) => _names.Remove(name);
 }
 
 /// <summary>
@@ -59,21 +61,32 @@ sealed class DropDown
     public Rectangle LocalBounds { get; private set; }
     public string? Picked { get; private set; }
 
+    /// <summary>The variable whose delete button was just clicked.</summary>
+    public string? DeleteRequested { get; private set; }
+
+    /// <summary>True when the last click hit the delete button of a variable in use.</summary>
+    public bool DeleteRefused { get; private set; }
+
     readonly List<string> _entries = new();
+    IReadOnlySet<string> _inUse = new HashSet<string>();
     int _hover = -1;
+    bool _hoverDelete;
     string? _selected;
 
-    public void Open(Rectangle anchor, IEnumerable<string> entries,
+    public void Open(Rectangle anchor, IEnumerable<string> entries, IReadOnlySet<string> inUse,
                      string? selected, int maxW, int maxH)
     {
         _entries.Clear();
         _entries.AddRange(entries);
-        _entries.Add("Make a variable...");
-        _selected = selected;
-
+        // Only the variable rows carry a delete button, so only they need room for it.
         int w = 140;
         foreach (string label in _entries)
-            w = Math.Max(w, Raylib.MeasureText(label, Theme.FontSize) + 28);
+            w = Math.Max(w, Raylib.MeasureText(label, Theme.FontSize) + 28 + Theme.DeleteButtonSize + 6);
+        _entries.Add("Make a variable...");
+        w = Math.Max(w, Raylib.MeasureText(_entries[^1], Theme.FontSize) + 28);
+        _inUse = inUse;
+        _selected = selected;
+
         if (_selected != null) w += 16;
         w = Math.Min(w, Math.Max(80, maxW - 16));
 
@@ -85,25 +98,60 @@ sealed class DropDown
         LocalBounds = new Rectangle(x, y, w, h);
         IsOpen = true;
         Picked = null;
+        DeleteRequested = null;
+        DeleteRefused = false;
         _hover = -1;
+        _hoverDelete = false;
     }
 
     public void Close()
     {
         IsOpen = false;
         _hover = -1;
+        _hoverDelete = false;
         _selected = null;
     }
 
-    public void Move(Vector2 localMouse) => _hover = IndexAt(localMouse);
+    public void Move(Vector2 localMouse)
+    {
+        _hover = IndexAt(localMouse);
+        _hoverDelete = OverDelete(_hover, localMouse);
+    }
 
     /// <summary>True when the click landed inside the popup (handled, even on a disabled row).</summary>
     public bool Click(Vector2 localMouse)
     {
+        DeleteRequested = null;
+        DeleteRefused = false;
+
         int i = IndexAt(localMouse);
         if (i < 0) return false;
+
+        if (OverDelete(i, localMouse))
+        {
+            if (_inUse.Contains(_entries[i])) DeleteRefused = true;
+            else DeleteRequested = _entries[i];
+            return true;
+        }
+
         Picked = i == _entries.Count - 1 ? MakeNew : _entries[i];
         return true;
+    }
+
+    /// <summary>The delete button of a variable row, left of the selected row's check mark.</summary>
+    public Rectangle DeleteBounds(int row)
+    {
+        float size = Theme.DeleteButtonSize;
+        float right = LocalBounds.X + LocalBounds.width - (_selected != null ? 22 : 6);
+        float top = LocalBounds.Y + 4 + row * Theme.EntryHeight + (Theme.EntryHeight - size) / 2f;
+        return new Rectangle(right - size, top, size, size);
+    }
+
+    bool OverDelete(int row, Vector2 p)
+    {
+        if (row < 0 || row >= _entries.Count - 1) return false; // "Make a variable..." has none
+        Rectangle r = DeleteBounds(row);
+        return p.X >= r.X && p.X < r.X + r.width && p.Y >= r.Y && p.Y < r.Y + r.height;
     }
 
     int IndexAt(Vector2 p)
@@ -135,6 +183,36 @@ sealed class DropDown
 
             if (_entries[i] == _selected)
                 DrawCheck(x + w - 18, ey + 7, Theme.StartGreen);
+        }
+
+        if (_hover >= 0 && _hover < _entries.Count - 1)
+            DrawDeleteButton(_hover, offsetX, offsetY);
+    }
+
+    void DrawDeleteButton(int row, int offsetX, int offsetY)
+    {
+        Rectangle local = DeleteBounds(row);
+        int x = (int)local.X + offsetX;
+        int y = (int)local.Y + offsetY;
+        int size = (int)local.width;
+        bool inUse = _inUse.Contains(_entries[row]);
+
+        Color fill = inUse ? Theme.PopupBorder
+            : _hoverDelete ? Theme.Lighten(Theme.Badge, 0.2f) : Theme.Badge;
+        Raylib.DrawRectangleRounded(new Rectangle(x, y, size, size), 0.3f, 6, fill);
+        const int inset = 5;
+        Raylib.DrawLineEx(new Vector2(x + inset, y + inset),
+            new Vector2(x + size - inset, y + size - inset), 2f, Raylib.WHITE);
+        Raylib.DrawLineEx(new Vector2(x + size - inset, y + inset),
+            new Vector2(x + inset, y + size - inset), 2f, Raylib.WHITE);
+
+        if (inUse && _hoverDelete)
+        {
+            const string hint = "In use";
+            int tipW = Raylib.MeasureText(hint, 13) + 12;
+            int tipX = x + size - tipW;
+            Raylib.DrawRectangle(tipX, y - 22, tipW, 20, new Color(20, 22, 30, 215));
+            Raylib.DrawText(hint, tipX + 6, y - 19, 13, Raylib.WHITE);
         }
     }
 

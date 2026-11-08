@@ -1260,12 +1260,42 @@ public sealed class Workspace : Frame
         Rectangle anchor = nameSlot?.Bounds ?? owner.Bounds;
         _drop.Open(anchor,
             _registry.Names,
+            VariablesInUse(),
             nameSlot?.SelectedName ?? (owner as VariableBlock)?.Name,
             Width, Height);
     }
 
+    /// <summary>Every variable a block on the workspace refers to.</summary>
+    HashSet<string> VariablesInUse()
+    {
+        var used = new HashSet<string>();
+        foreach (Block root in _roots)
+        {
+            foreach (Block b in root.Flatten())
+            {
+                if (b is VariableBlock { Name: { } name }) used.Add(name);
+                foreach (Slot slot in b.Slots)
+                    if (slot.SelectedName is { } selected) used.Add(selected);
+            }
+        }
+        return used;
+    }
+
+    /// <summary>Removes a variable no block refers to; false leaves it in place.</summary>
+    internal bool TryDeleteVariable(string name)
+        => !VariablesInUse().Contains(name) && _registry.Remove(name);
+
     internal void ApplyDropPicked()
     {
+        if (_drop.DeleteRefused) return; // the menu stays open, the grey button says why
+
+        if (_drop.DeleteRequested is { } doomed && _dropOwner != null)
+        {
+            TryDeleteVariable(doomed);
+            OpenDropdown(_dropOwner, _dropSlot); // stays open so the list shows the result
+            return;
+        }
+
         string? picked = _drop.Picked;
         _drop.Close();
         if (picked == null) return;
