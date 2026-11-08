@@ -1,0 +1,6 @@
+1 5
+>.@#.
+set i to 0
+while true
+  set i to i + 1
+  step forward 1

@@ -1,0 +1,5 @@
+1 5
+>.@#.
+set go to true
+while go
+  turn by 1

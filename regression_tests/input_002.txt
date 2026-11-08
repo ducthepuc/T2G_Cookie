@@ -1,0 +1,9 @@
+1 5
+>.@#.
+set g to true
+if false
+  print 1
+else
+  while g
+    set g to false
+print 3

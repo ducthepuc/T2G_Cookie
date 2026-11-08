@@ -1,0 +1,5 @@
+1 5
+>.@#.
+step forward 2
+mine here
+mine here

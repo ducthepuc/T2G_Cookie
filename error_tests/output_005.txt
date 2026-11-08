@@ -1,0 +1,3 @@
+1
+2 isThere 0 true E_TYPE_MISMATCH
+EOR

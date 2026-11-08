@@ -1,0 +1,2 @@
+1 isThere true E_BAD_ARG
+EOR

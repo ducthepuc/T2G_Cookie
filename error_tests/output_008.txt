@@ -1,0 +1,2 @@
+1 print E_UNINITIALIZED
+EOR

@@ -1,0 +1,4 @@
+1 5
+>.@#.
+step forward 3
+print 1

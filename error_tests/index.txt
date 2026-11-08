@@ -1,0 +1,45 @@
+Map for all tests:
+1 5
+>.@#.
+
+001  empty program  ->  no error
+002  TYPE_MISMATCH int->bool literal  ->  E_TYPE_MISMATCH
+003  TYPE_MISMATCH binop result  ->  E_TYPE_MISMATCH
+004  TYPE_MISMATCH comparison result into int  ->  E_TYPE_MISMATCH
+005  TYPE_MISMATCH after isThere call (gray zone)  ->  E_TYPE_MISMATCH
+006  UNINIT beats TYPE_MISMATCH  ->  E_UNINITIALIZED
+007  UNINIT plain set  ->  E_UNINITIALIZED
+008  UNINIT print param  ->  E_UNINITIALIZED
+009  UNINIT if condition  ->  E_UNINITIALIZED
+010  UNINIT step param  ->  E_UNINITIALIZED
+011  UNINIT isThere param  ->  E_UNINITIALIZED
+012  UNINIT because branch skipped  ->  E_UNINITIALIZED
+013  UNINIT op1 before BAD_OPERAND op2  ->  E_UNINITIALIZED
+014  BAD_OPERAND op1 before UNINIT op2  ->  E_BAD_OPERAND
+015  BAD_OPERAND arithmetic  ->  E_BAD_OPERAND
+016  BAD_OPERAND multiply  ->  E_BAD_OPERAND
+017  BAD_OPERAND comparison  ->  E_BAD_OPERAND
+018  BAD_OPERAND and  ->  E_BAD_OPERAND
+019  BAD_OPERAND or op2  ->  E_BAD_OPERAND
+020  BAD_OPERAND not  ->  E_BAD_OPERAND
+021  BAD_OPERAND equality mixed types  ->  E_BAD_OPERAND
+022  BAD_OPERAND <> mixed types  ->  E_BAD_OPERAND
+023  equality: op2 UNINIT checked before type match  ->  E_UNINITIALIZED
+024  equality valid on bools (no error)  ->  no error
+025  NON_BOOL if on int var  ->  E_NON_BOOL_CONDITION
+026  NON_BOOL while literal  ->  E_NON_BOOL_CONDITION
+027  NON_BOOL while int var  ->  E_NON_BOOL_CONDITION
+028  BEDROCK wall mid-step  ->  E_BEDROCK_HIT
+029  BEDROCK map edge  ->  E_BEDROCK_HIT
+030  BEDROCK inside loop  ->  E_BEDROCK_HIT
+031  step forward 0 facing edge is fine  ->  no error
+032  isThere off-map returns wall, no error  ->  no error
+033  NO_GOLD empty cell  ->  E_NO_GOLD
+034  NO_GOLD mined twice  ->  E_NO_GOLD
+035  BAD_ARG isThere 3  ->  E_BAD_ARG
+036  BAD_ARG isThere bool  ->  E_BAD_ARG
+037  BAD_ARG turn by bool  ->  E_BAD_ARG
+038  BAD_ARG step bool  ->  E_BAD_ARG
+039  BAD_ARG negative step (gray zone: param logged)  ->  E_BAD_ARG
+040  BAD_ARG negative turn (gray zone: param logged)  ->  E_BAD_ARG
+041  LIMIT: 1000 entries then limit, no EOR  ->  INSTRUCTION_COUNT_LIMIT_EXCEEDED

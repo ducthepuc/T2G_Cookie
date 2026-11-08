@@ -1,0 +1,2 @@
+1 step forward 3 E_BEDROCK_HIT
+EOR

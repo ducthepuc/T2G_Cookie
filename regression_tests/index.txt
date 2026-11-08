@@ -1,0 +1,13 @@
+001  if nested in else resumes after the inner block
+002  while nested in else ends and resumes
+003  statements after a nested if in else still run
+004  exactly 1000 processed lines ends with EOR
+005  1001 straight lines hit the limit
+006  600 two-bytecode lines all run
+007  a mined cell is empty: isThere and stepping back
+008  empty if body
+009  empty while body with false condition
+010  empty else body
+011  spec example log, page 11-12
+012  empty program
+013  spec gold program walks and mines until the wall

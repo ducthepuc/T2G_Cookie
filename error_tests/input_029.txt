@@ -1,0 +1,4 @@
+1 5
+>.@#.
+turn by 1
+step forward 1

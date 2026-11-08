@@ -1,0 +1,2 @@
+1 E_BAD_OPERAND
+EOR

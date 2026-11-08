@@ -1,0 +1,4 @@
+1 5
+>.@#.
+if true
+print 1

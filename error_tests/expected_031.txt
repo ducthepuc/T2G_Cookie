@@ -1,0 +1,4 @@
+1 turn by 1
+2 step forward 0
+3 print 1
+EOR

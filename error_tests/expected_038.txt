@@ -1,0 +1,2 @@
+1 step forward false E_BAD_ARG
+EOR

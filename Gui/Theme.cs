@@ -35,6 +35,7 @@ static class Theme
     // at or past it the press becomes a drag.
     public const int DragThreshold = 6;
     public const int EntryHeight = 24;
+    public const int DeleteButtonSize = 16;
 
     // slots / placeholders
     public const int PlaceholderFontSize = 12;

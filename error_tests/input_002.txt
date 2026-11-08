@@ -1,0 +1,4 @@
+1 5
+>.@#.
+set x to 5
+set x to true

@@ -1,0 +1,2 @@
+1 isThere E_UNINITIALIZED
+EOR

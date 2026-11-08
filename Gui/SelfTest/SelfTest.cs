@@ -66,6 +66,7 @@ print count
             Run("Number / boolean / variable click editing", TestClickEditing);
             Run("Click vs drag threshold", TestPressClickVsDrag);
             Run("Variable dropdown and name prompt", TestDropdowns);
+            Run("Deleting variables from the dropdown", TestDeleteVariables);
             Run("Golden AST for the target script", TestGoldenAst);
             Run("Loading a parsed file into blocks", TestLoadRoundTrip);
             Run("Saving the script back to the input file", TestSave);
@@ -1060,6 +1061,73 @@ print count
     }
 
     // ----------------------------------------------------------- dropdowns --
+
+    static Vector2 Center(Rectangle r) => new(r.X + r.width / 2f, r.Y + r.height / 2f);
+
+    /// <summary>The delete button only removes variables no block refers to, wherever
+    /// the reference sits, and it never counts as picking the row.</summary>
+    static void TestDeleteVariables()
+    {
+        Workspace ws = NewWorkspace();
+        foreach (string v in new[] { "free", "named", "nested" })
+            Check(ws.Registry.TryCreate(v, out _), $"registered {v}");
+
+        // One reference through a name field, one through a reporter inside a C-block.
+        StackBlock set = (StackBlock)ByKind(BlockKind.Set);
+        ws.AddRootBlock(set, new Vector2(140, 140));
+        set.Slots[0].SelectedName = "named";
+
+        CBlock loop = (CBlock)ByKind(BlockKind.While);
+        ws.AddRootBlock(loop, new Vector2(140, 260));
+        StackBlock print = (StackBlock)ByKind(BlockKind.Print);
+        Check(loop.AttachInside(print), "the while took the print");
+        Check(print.AttachToSlot(print.Slots[0], Var("nested")), "print took its variable");
+
+        var opener = (VariableBlock)ByKind(BlockKind.Variable);
+        ws.AddRootBlock(opener, new Vector2(400, 140));
+        ws.Update(0, 0);
+
+        ws.HandleClick(opener, null);
+        Check(ws.Menu.IsOpen, "clicking the variable opened its menu");
+
+        // Rows follow registry order: free, named, nested.
+        ws.Menu.Click(Center(ws.Menu.DeleteBounds(1)));
+        Check(ws.Menu.DeleteRefused && ws.Menu.DeleteRequested == null, "named is in use");
+        ws.ApplyDropPicked();
+        Check(ws.Menu.IsOpen, "a refused delete leaves the menu open");
+        Check(ws.Registry.Contains("named"), "a name field keeps its variable alive");
+        Check(ws.Menu.Picked == null, "the delete button does not pick the row");
+
+        ws.Menu.Click(Center(ws.Menu.DeleteBounds(2)));
+        ws.ApplyDropPicked();
+        Check(ws.Registry.Contains("nested"), "a parked reporter in a mouth keeps its variable alive");
+
+        // The workspace refuses on its own too, not just through the button.
+        Check(!ws.TryDeleteVariable("named"), "a direct delete of a used variable is refused");
+
+        ws.Menu.Click(Center(ws.Menu.DeleteBounds(0)));
+        Check(ws.Menu.DeleteRequested == "free", "the free variable's button fired");
+        ws.ApplyDropPicked();
+        Check(!ws.Registry.Contains("free"), "the free variable is gone");
+        Check(ws.Menu.IsOpen, "the menu stays open after a delete");
+        Check(opener.Name == null, "deleting does not fill the field that opened the menu");
+
+        // No delete button on "Make a variable...": the last row picks.
+        Rectangle last = ws.Menu.DeleteBounds(ws.Registry.Names.Count);
+        Check(ws.Menu.Click(Center(last)), "the last row was hit");
+        Check(ws.Menu.Picked == DropDown.MakeNew && ws.Menu.DeleteRequested == null,
+            "Make a variable... has no delete button");
+        ws.Menu.Close();
+
+        // Once the last reference goes, the variable can go too.
+        set.Slots[0].SelectedName = null;
+        Check(ws.TryDeleteVariable("named"), "an unreferenced variable can be deleted");
+        Check(!ws.Registry.Contains("named"), "named is gone");
+        ws.Update(0, 0);
+        Check(ws.Validation.Errors.All(e => !e.Message.Contains("unknown variable")),
+            "deleting leaves no block pointing at a missing variable");
+        Healthy(ws, "after deleting variables");
+    }
 
     static void TestDropdowns()
     {
