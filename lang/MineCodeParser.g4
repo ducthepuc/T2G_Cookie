@@ -67,7 +67,7 @@ functionExpression
     ;
 
 unaryExpression
-    : NOT atom
+    : NOT (atom | functionExpression)
     ;
 
 binExpression

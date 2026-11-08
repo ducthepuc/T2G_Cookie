@@ -274,7 +274,10 @@ static class AstConverter
             case BlockKind.IsThere:
                 return new IsThere(AsSimple(ValueOf(b, 0, ctx), b, ctx));
             case BlockKind.Not:
-                return new Not(AsSimple(ValueOf(b, 0, ctx), b, ctx));
+                {
+                    Value operand = ValueOf(b, 0, ctx);
+                    return new Not(operand is IsThere ? operand : AsSimple(operand, b, ctx));
+                }
 
             case BlockKind.Add: return Bin(b, BinOp.Operation.Add, ctx);
             case BlockKind.Sub: return Bin(b, BinOp.Operation.Sub, ctx);
@@ -311,8 +314,8 @@ static class AstConverter
     }
 
     /// <summary>
-    /// The MineCode grammar only allows atoms inside operators and next to isThere/not
-    /// (see `binExpression: atom OP atom`), so a nested expression there gets a badge
+    /// The MineCode grammar only allows atoms inside operators and next to isThere/not,
+    /// apart from `not isThere x` (see `binExpression: atom OP atom`), so a nested expression there gets a badge
     /// instead of silently producing something the backend can't emit.
     /// </summary>
     static SimpleValue AsSimple(Value v, Block at, Ctx ctx)

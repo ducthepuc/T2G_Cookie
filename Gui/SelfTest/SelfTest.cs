@@ -1452,6 +1452,30 @@ print count
         Check(Normalize(MineCodeWriter.Write(cellResult.Scripts[0])) ==
               "set wall to 1\nset a to isThere wall\nset b to isThere 0",
             "the blocks write back exactly as the file had them");
+
+        // `not` and `isThere` conditions survive text -> blocks -> text.
+        const string negated = "set a to not isThere 1\nif not isThere 2\n    print 1\nif not a\n    print 2\n" +
+                               "if isThere 2\n    print 3\nwhile isThere 0\n    step forward 1\n" +
+                               "while not isThere 1\n    step forward 1\nwhile not a\n    print 4";
+        Workspace negatedWs = NewWorkspace();
+        Body negatedScript;
+        try
+        {
+            Console.SetOut(TextWriter.Null);
+            negatedScript = MineCode.ParseCode(negated + "\n");
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+        }
+
+        List<string> negatedProblems = AstLoader.Load(negatedWs, [negatedScript]);
+        Check(negatedProblems.Count == 0,
+            "the negated script loaded cleanly, got: " + string.Join(" | ", negatedProblems));
+        AstResult negatedResult = negatedWs.RunStart();
+        Check(negatedResult.Errors.Count == 0, "the negated script converts cleanly");
+        Check(Normalize(MineCodeWriter.Write(negatedResult.Scripts[0])) == negated,
+            "if not / not isThere write back exactly as the file had them");
     }
 
     /// <summary>
@@ -1644,7 +1668,8 @@ print count
     }
 
     /// <summary>Operators and isThere fit only right of `set ... to`; every other
-    /// field is a simpleval, and value blocks do not nest.</summary>
+    /// field is a simpleval and value blocks do not nest, except `not` and `isThere`
+    /// as an `if` or `while` condition, and `not isThere x`.</summary>
     static void TestValueSlots()
     {
         Block Op()
@@ -1674,6 +1699,23 @@ print count
         ReporterBlock not = (ReporterBlock)ByKind(BlockKind.Not);
         Check(!not.AttachToSlot(not.Slots[0], Op()), "value blocks do not nest");
         Check(not.AttachToSlot(not.Slots[0], Var("x")), "not takes a variable");
+
+        // The deliberate exceptions, and their limits.
+        foreach (BlockKind kind in new[] { BlockKind.If, BlockKind.While })
+        {
+            Block takesNot = ByKind(kind);
+            ReporterBlock notIsThere = (ReporterBlock)ByKind(BlockKind.Not);
+            ReporterBlock sensing = (ReporterBlock)ByKind(BlockKind.IsThere);
+            Check(sensing.AttachToSlot(sensing.Slots[0], Num(1)), "isThere takes a number");
+            Check(notIsThere.AttachToSlot(notIsThere.Slots[0], sensing), "not takes isThere");
+            Check(takesNot.AttachToSlot(takesNot.Slots[0], notIsThere), $"{kind} takes not holding isThere");
+
+            Block takesIsThere = ByKind(kind);
+            Check(takesIsThere.AttachToSlot(takesIsThere.Slots[0], ByKind(BlockKind.IsThere)), $"{kind} takes isThere");
+        }
+
+        ReporterBlock notOuter = (ReporterBlock)ByKind(BlockKind.Not);
+        Check(!notOuter.AttachToSlot(notOuter.Slots[0], ByKind(BlockKind.Not)), "not refuses not");
     }
 
     /// <summary>Control blocks nest three levels at most, however the chain is built.</summary>

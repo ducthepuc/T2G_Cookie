@@ -12,5 +12,5 @@ public record class BinOp(SimpleValue left, SimpleValue right, BinOp.Operation o
     public enum Operation
     { Add, Sub, Mul, Eq, Neq, Lt, Leq, Gt, Geq, And, Or }
 }
-public record class Not(SimpleValue Value) : Value;
+public record class Not(Value Value) : Value;
 public record IsThere(SimpleValue Arg) : Value;

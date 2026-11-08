@@ -86,7 +86,9 @@ public class MineCodeVisitor : MineCodeParserBaseVisitor<object>
 
     public override object VisitUnaryExpression([NotNull] MineCodeParser.UnaryExpressionContext context)
     {
-        return new Not(VisitAtom(context.atom()));
+        return context.functionExpression() is { } call
+            ? new Not((Value)Visit(call))
+            : new Not(VisitAtom(context.atom()));
     }
 
     static BinOp.Operation GetOperation(MineCodeParser.BinExpressionContext ctx)

@@ -159,11 +159,16 @@ abstract class Block : Element, IInteractable
     }
 
     /// <summary>
-    /// A field holds a plain value (number, boolean, variable): the grammar has
-    /// `simpleval` everywhere except right of `set ... to`, the only place operator
-    /// blocks and isThere may go.
+    /// A field holds a plain value (number, boolean, variable), except right of
+    /// `set ... to`, which takes any value block. More combinations are allowed on
+    /// purpose, beyond the competition EBNF: `not` and `isThere` as the condition of
+    /// `if` and `while`, and `not isThere x`.
     /// </summary>
-    public bool AcceptsValue(Block reporter) => Kind == BlockKind.Set || reporter.Slots.Count == 0;
+    public bool AcceptsValue(Block reporter) =>
+        Kind == BlockKind.Set
+        || reporter.Slots.Count == 0
+        || (Kind is BlockKind.If or BlockKind.While && reporter.Kind is BlockKind.Not or BlockKind.IsThere)
+        || (Kind == BlockKind.Not && reporter.Kind == BlockKind.IsThere);
 
     /// <summary>How deep control blocks may nest (the spec's three levels).</summary>
     public const int MaxControlLevels = 3;
