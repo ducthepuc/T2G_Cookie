@@ -15,6 +15,14 @@ public class App
     {
         Raylib.SetConfigFlags(ConfigFlags.FLAG_WINDOW_RESIZABLE);
         Raylib.InitWindow(ScreenW, ScreenH, "RoboMiner");
+
+        Image appimage = Raylib.LoadImage(Path.Combine(AppContext.BaseDirectory, "assets", "icon.png"));
+        
+        
+
+        Raylib.SetWindowIcon(appimage);
+        Raylib.UnloadImage(appimage);
+
         RayGui.GuiLoadStyleDefault();
         Raylib.SetTargetFPS(120);
     }

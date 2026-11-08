@@ -11,10 +11,8 @@ public class MachineSpirit : VMInstance.IVMAPI
     public HandleOutputFile logger;
     public Direction direction;
     public readonly MapHandler mapHandler;
-
     public int GoldMined {get; private set;}
 
-    bool isSetup;
 
     public MachineSpirit(string logPath, MapHandler map)
     {
@@ -49,11 +47,11 @@ public class MachineSpirit : VMInstance.IVMAPI
         logger.Finish(exceeded);
     }
 
-    public VMInstance.ExecutionResult turn(ValueUnion amount)
+    public VMInstance.ExecutionResult turn(ValueUnion amount, int line)
     {
         if (amount.type != ValueUnion.ValueType.Number)
         {
-            return VMInstance.ExecutionResult.ERROR(VMInstance.ExecutionResult.ErrorKind.E_BAD_ARG);
+            return VMInstance.ExecutionResult.ERROR(VMInstance.ExecutionResult.ErrorKind.E_BAD_ARG, line);
         }
 
         for (int i = 0; i < amount.value % 4; i++) direction = direction.TurnLeft();   
@@ -61,7 +59,7 @@ public class MachineSpirit : VMInstance.IVMAPI
         return VMInstance.ExecutionResult.OK;
     }
 
-    public VMInstance.ExecutionResult mine()
+    public VMInstance.ExecutionResult mine(int line)
     {
         if (mapHandler.Mine(position))
         {
@@ -69,14 +67,14 @@ public class MachineSpirit : VMInstance.IVMAPI
             return VMInstance.ExecutionResult.OK;
         }
 
-        return VMInstance.ExecutionResult.ERROR(VMInstance.ExecutionResult.ErrorKind.E_NO_GOLD);
+        return VMInstance.ExecutionResult.ERROR(VMInstance.ExecutionResult.ErrorKind.E_NO_GOLD, line);
     }
 
-    public VMInstance.ExecutionResult move(ValueUnion amount)
+    public VMInstance.ExecutionResult move(ValueUnion amount, int line)
     {
         if (amount.type != ValueUnion.ValueType.Number)
         {
-            return VMInstance.ExecutionResult.ERROR(VMInstance.ExecutionResult.ErrorKind.E_BAD_ARG);
+            return VMInstance.ExecutionResult.ERROR(VMInstance.ExecutionResult.ErrorKind.E_BAD_ARG, line);
         }
 
         for (int i = 0; i < amount.value; i++)
@@ -84,7 +82,7 @@ public class MachineSpirit : VMInstance.IVMAPI
             var element = mapHandler.GetForward(direction, position);
             if (element == MapHandler.MapElement.Wall)
             {
-                return VMInstance.ExecutionResult.ERROR(VMInstance.ExecutionResult.ErrorKind.E_BEDROCK_HIT);
+                return VMInstance.ExecutionResult.ERROR(VMInstance.ExecutionResult.ErrorKind.E_BEDROCK_HIT, line);
             }
 
             position = new Vector2Int(position.X + direction.ModX, position.Y + direction.ModY);
@@ -93,14 +91,14 @@ public class MachineSpirit : VMInstance.IVMAPI
         return VMInstance.ExecutionResult.OK;
     }
 
-    public VMInstance.ExecutionResult isThere(ValueUnion query, out bool result)
+    public VMInstance.ExecutionResult isThere(ValueUnion query, out bool result, int line)
     {
         var element = mapHandler.GetForward(direction, position);
 
         if (query.type != ValueUnion.ValueType.Number)
         {
             result = false;        
-            return VMInstance.ExecutionResult.ERROR(VMInstance.ExecutionResult.ErrorKind.E_BAD_ARG);    
+            return VMInstance.ExecutionResult.ERROR(VMInstance.ExecutionResult.ErrorKind.E_BAD_ARG, line);    
         }
 
         if ((long) element == query.value)

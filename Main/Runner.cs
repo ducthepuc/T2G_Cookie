@@ -93,11 +93,18 @@ static class Runner
 
             VMInstance.ExecutionResult result = vm.RunCode(false);
 
-            ws.SyncRunState(spirit.position, spirit.direction);
-            ws.HighlightLine(null);
-            Console.WriteLine(result.Ok
-                ? $"run: finished, {spirit.GoldMined} gold mined"
-                : $"run: stopped with {result.Error.ErrorKind}, {spirit.GoldMined} gold mined");
+            if (!result.Ok)
+            {
+                ws.AppendPrint(result.Error.ErrorKind.ToString(), result.Error.Line);
+                ws.HighlightLine(result.Error.Line);
+            }else
+            {
+                ws.SyncRunState(spirit.position, spirit.direction);
+                ws.HighlightLine(null);
+                Console.WriteLine(result.Ok
+                    ? $"run: finished, {spirit.GoldMined} gold mined"
+                    : $"run: stopped with {result.Error.ErrorKind}, {spirit.GoldMined} gold mined");
+            }
         }
         catch (RunAborted)
         {
@@ -160,11 +167,11 @@ sealed class OutputApi : VMInstance.IVMAPI
     }
 
     public void logEor(bool exceeded) => _spirit.logEor(exceeded);
-    public VMInstance.ExecutionResult move(ValueUnion amount) => _spirit.move(amount);
-    public VMInstance.ExecutionResult turn(ValueUnion amount) => _spirit.turn(amount);
-    public VMInstance.ExecutionResult mine() => _spirit.mine();
-    public VMInstance.ExecutionResult isThere(ValueUnion query, out bool result)
-        => _spirit.isThere(query, out result);
+    public VMInstance.ExecutionResult move(ValueUnion amount, int line) => _spirit.move(amount, line);
+    public VMInstance.ExecutionResult turn(ValueUnion amount, int line) => _spirit.turn(amount, line);
+    public VMInstance.ExecutionResult mine(int line) => _spirit.mine(line);
+    public VMInstance.ExecutionResult isThere(ValueUnion query, out bool result, int line)
+        => _spirit.isThere(query, out result, line);
 
     /// <summary>The value the just-executed statement printed, or null when it was
     /// not a successful print with a printable (number/boolean) argument.</summary>
