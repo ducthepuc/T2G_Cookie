@@ -107,4 +107,6 @@ public class MapHandler
 
         return true;
     }
+
+    public MapElement[,] GetElements() => parsableMap;
 }

@@ -14,9 +14,10 @@ public class MachineSpirit : VMInstance.IVMAPI
 
     public int GoldMined {get; private set;}
 
-    public MachineSpirit(VMInstance vMInstance, string logPath, MapHandler map)
+    bool isSetup;
+
+    public MachineSpirit(string logPath, MapHandler map)
     {
-        vMInstance.Implementor = this;
         logger = new HandleOutputFile(logPath);
         this.mapHandler = map;
         var machinePos = mapHandler.IdentifyRobot(out Direction? direction);
@@ -25,6 +26,11 @@ public class MachineSpirit : VMInstance.IVMAPI
         
         this.position  = machinePos.Value;
         this.direction = direction!.Value;
+    }
+
+    public void Setup(VMInstance vMInstance)
+    {
+        vMInstance.Implementor = this;   
     }
 
     ~MachineSpirit()

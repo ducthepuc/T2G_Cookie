@@ -30,6 +30,9 @@ public class VMInstance
     IVMAPI? implementor;
     bool isReady = false;
 
+    public delegate bool InstructionRan(BytecodeInstruction instruction);
+    public event InstructionRan OnInstruction;
+
     public IVMAPI Implementor
     {
         get
@@ -123,6 +126,8 @@ public class VMInstance
                 lineParam = null;
                 lineRet = null;
                 instructionCounter++;
+
+                OnInstruction?.Invoke(instruction);
             }
             
 
