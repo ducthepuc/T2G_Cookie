@@ -14,14 +14,18 @@ public class MapHandler
     MapElement[,] parsableMap;
 
     // Cells whose gold was mined this session (row, col), for display only: the
-    // parsed element is a Wall either way, exactly as MachineSpirit leaves it.
+    // parsed element is plain Empty once the gold is gone.
     readonly HashSet<(int Row, int Col)> _mined = [];
+
+    // Cells the robot has been on or called isThere at (row, col).
+    readonly HashSet<(int Row, int Col)> _explored = [];
 
     // The state before the current run: Start checkpoints, Stop restores.
     char[,]? _runMap;
     MapElement[,]? _runParsable;
     HashSet<(int Row, int Col)>? _runMined;
-    
+    HashSet<(int Row, int Col)>? _runExplored;
+
     public enum MapElement : long
     {
         Empty = 0,
@@ -34,7 +38,23 @@ public class MapHandler
         this.map = map;
         _original = (char[,])map.Clone();
         ParseMap();
+        ExploreRobotCell();
     }
+
+    void ExploreRobotCell()
+    {
+        if (IdentifyRobot(out _) is { } robot) MarkExplored(robot);
+    }
+
+    /// <summary>Marks a cell as explored; positions off the map are ignored.</summary>
+    public void MarkExplored(Vector2Int cell)
+    {
+        if (cell.X >= 0 && cell.Y >= 0 && cell.X < Cols && cell.Y < Rows)
+            _explored.Add((cell.Y, cell.X));
+    }
+
+    /// <summary>True for a cell the robot has been on or sensed with isThere.</summary>
+    public bool IsExplored(int row, int col) => _explored.Contains((row, col));
 
     public int Rows => map.GetLength(0);
     public int Cols => map.GetLength(1);
@@ -89,10 +109,8 @@ public class MapHandler
 
     /// <summary>
     /// Steps the robot one cell forward: false at the map edge or into a wall, so a
-    /// manual driver can never push it through terrain. Mined cells read as walls
-    /// but are walkable - green means the gold is gone, not that the way is blocked
-    /// (the VM keeps MachineSpirit's stricter rule). The cell it leaves goes back to
-    /// its terrain, which keeps the matrix consistent for saving and for the
+    /// manual driver can never push it through terrain. The cell it leaves goes back
+    /// to its terrain, which keeps the matrix consistent for saving and for the
     /// simulator picking the position up later.
     /// </summary>
     public bool StepRobot()
@@ -103,10 +121,11 @@ public class MapHandler
         int col = pos.Value.X + facing.Value.ModX;
         int row = pos.Value.Y + facing.Value.ModY;
         if (row < 0 || row >= Rows || col < 0 || col >= Cols) return false;
-        if (parsableMap[row, col] == MapElement.Wall && !IsMined(row, col)) return false;
+        if (parsableMap[row, col] == MapElement.Wall) return false;
 
         map[pos.Value.Y, pos.Value.X] = CharOf(parsableMap[pos.Value.Y, pos.Value.X]);
         map[row, col] = CharOf(facing.Value);
+        _explored.Add((row, col));
         return true;
     }
 
@@ -211,14 +230,14 @@ public class MapHandler
         ref var mapThere = ref parsableMap[pos.Y, pos.X];
         if (mapThere != MapElement.Gold) return false;
 
-        mapThere = MapElement.Wall;
+        mapThere = MapElement.Empty;
         _mined.Add((pos.Y, pos.X));
 
         return true;
     }
 
     /// <summary>True for a cell mined this session: the map itself cannot tell it
-    /// apart from an original wall, but viewers want to show it differently.</summary>
+    /// apart from an original empty cell, but viewers want to show it differently.</summary>
     public bool IsMined(int row, int col) => _mined.Contains((row, col));
 
     /// <summary>Puts every mined cell back to gold - and back into the matrix, except
@@ -250,6 +269,8 @@ public class MapHandler
 
         _mined.Clear();
         ParseMap(); // parsableMap + TotalGold rebuilt from the restored matrix
+        _explored.Clear();
+        ExploreRobotCell();
     }
 
     /// <summary>Remembers the map exactly as it is now - terrain matrix, parsed
@@ -260,6 +281,7 @@ public class MapHandler
         _runMap = (char[,])map.Clone();
         _runParsable = (MapElement[,])parsableMap.Clone();
         _runMined = new HashSet<(int Row, int Col)>(_mined);
+        _runExplored = new HashSet<(int Row, int Col)>(_explored);
     }
 
     /// <summary>Puts the map back to the last <see cref="Checkpoint"/>: the robot's
@@ -267,17 +289,20 @@ public class MapHandler
     /// yet means nothing to restore.</summary>
     public void RestoreCheckpoint()
     {
-        if (_runMap == null || _runParsable == null || _runMined == null) return;
+        if (_runMap == null || _runParsable == null || _runMined == null || _runExplored == null) return;
 
         Array.Copy(_runMap, map, _runMap.Length);
         Array.Copy(_runParsable, parsableMap, _runParsable.Length);
         _mined.Clear();
         foreach ((int row, int col) in _runMined)
             _mined.Add((row, col));
+        _explored.Clear();
+        _explored.UnionWith(_runExplored);
     }
 
     /// <summary>Mines the cell the robot stands on - what MachineSpirit's Mine block
-    /// does: gold turns into a wall, anything else (or no robot) is refused.</summary>
+    /// does: the gold is gone and the cell is empty; anything else (or no robot) is
+    /// refused.</summary>
     public bool MineRobot()
     {
         Vector2Int? pos = IdentifyRobot(out _);

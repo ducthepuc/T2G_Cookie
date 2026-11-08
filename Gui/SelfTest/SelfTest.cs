@@ -71,9 +71,13 @@ print count
             Run("Saving the script back to the input file", TestSave);
             Run("Palette covers the whole language", TestPaletteParity);
             Run("Every operator maps to the backend AST", TestOperatorParity);
-            Run("Built-in cell kinds are literals", TestBuiltins);
+            Run("Variable names", TestVariableNames);
+            Run("Value fields follow the grammar", TestValueSlots);
+            Run("Nesting limit", TestNestingLimit);
+            Run("Inserting before a block", TestInsertBefore);
+            Run("The live run session", TestRunSession);
             Run("Literal reporters map and render", TestLiteralParity);
-            Run("Empty C-block mouths are rejected", TestEmptyMouths);
+            Run("Empty C-block mouths are valid", TestEmptyMouths);
             Run("Workspace and toolbox render", TestDrawSmoke);
             Run("Validation badges", TestValidation);
             Run("Running the script on the Backend VM", TestVmRun);
@@ -347,26 +351,26 @@ print count
 
         ws.Drop(d, snap!);
         Healthy(ws, "after Above drop");
-        Check(c.Inner == null, "emptied mouth no longer points at the block");
-        Check(inner.Container == null, "Container back-pointer cleared with it");
-        Check(ReferenceEquals(d.Next, inner) && inner.Previous == d, "block moved into the dragged chain");
-        Check(Roots(ws).Count == 2 && Roots(ws).Contains(c) && Roots(ws).Contains(d),
-            "c-block and dragged chain are two separate roots");
+        Check(ReferenceEquals(c.Inner, d) && d.Container == c, "the dragged block took the head of the mouth");
+        Check(ReferenceEquals(d.Next, inner) && inner.Previous == d && inner.Container == null,
+            "the old head moved down one, still in the mouth");
+        Check(Roots(ws).Count == 1 && Roots(ws).Contains(c), "nothing left the c-block");
 
         // Grab that block back and drop it into the same mouth again. Before the fix
         // this ended with inner.Next == inner and Layout() never returning.
+        ws.LayoutAll();
         Vector2 mouse = new(inner.X + 3, inner.Y + 3);
         Block? grabbed = ws.HandlePress(mouse, out _);
         Check(ReferenceEquals(grabbed, inner), "grabbed the block back");
 
         SnapTarget? snap2 = ws.FindSnap(grabbed!);
-        Check(snap2 != null && snap2.Kind == SnapKind.Inside, "snaps back into the mouth");
+        Check(snap2 != null && snap2.Kind == SnapKind.Below && ReferenceEquals(snap2.Target, d),
+            "snaps back under the new head of the mouth");
 
         ws.Drop(grabbed!, snap2);
         Healthy(ws, "after re-inserting into the mouth");
-        Check(ReferenceEquals(c.Inner, inner) && inner.Container == c, "block lives in the mouth again");
-        Check(Roots(ws).Count == 2 && Roots(ws).Contains(c) && Roots(ws).Contains(d),
-            "the emptied drag is still its own root");
+        Check(ReferenceEquals(c.Inner, d) && ReferenceEquals(d.Next, inner), "block lives in the mouth again");
+        Check(Roots(ws).Count == 1 && Roots(ws).Contains(c), "the c-block is still the only root");
 
         // And the direct call that used to knot the list.
         Check(!c.AttachInside(inner), "re-attaching a block that is already inside is refused");
@@ -464,8 +468,10 @@ print count
         ws.Draw(0, 0);
         Raylib.EndDrawing();
 
-        Check(ws.RobotToggle.Y == ws.MapPanel.Y + ws.MapPanel.Height + Theme.RobotPanelGap,
-            "the checkbox frame sits under the map panel");
+        Check(ws.Sensor.Y == ws.MapPanel.Y + ws.MapPanel.Height + Theme.RobotPanelGap,
+            "the sensor sits under the map panel");
+        Check(ws.RobotToggle.Y == ws.Sensor.Y + ws.Sensor.Height + Theme.RobotPanelGap,
+            "the checkbox frame sits under the sensor");
         Check(ws.RobotButtons.Y == ws.RobotToggle.Y + ws.RobotToggle.Height + Theme.RobotPanelGap,
             "the button frame sits under the checkbox");
         Check(ws.RobotToggle.Width == ws.MapPanel.Width && ws.RobotButtons.Width == ws.MapPanel.Width,
@@ -526,11 +532,11 @@ print count
         Check(map.ElementAt(1, 0) == MapHandler.MapElement.Gold,
             "the gold stays under the robot for the display and the simulator");
 
-        // MINE follows MachineSpirit's rule: the gold under the robot becomes a
-        // wall, and mining anything else is refused.
+        // MINE follows MachineSpirit's rule: the gold under the robot is gone and the
+        // cell is empty, and mining anything else is refused.
         ws.RobotButtons.Click(mine);
-        Check(map.ElementAt(1, 0) == MapHandler.MapElement.Wall,
-            "mining the gold under the robot turns it into a wall");
+        Check(map.ElementAt(1, 0) == MapHandler.MapElement.Empty,
+            "mining the gold under the robot leaves an empty cell");
         Check(map.IsMined(1, 0), "the mined cell is marked for the green display");
         Check(!map.IsMined(0, 1), "an original wall is not marked as mined");
         Check(map.GoldMined == 1, "mining raises the collected count");
@@ -539,16 +545,16 @@ print count
             "the output gold row shows the collected count");
         Check(map.IdentifyRobot(out _) is { X: 0, Y: 1 }, "mining does not move the robot");
         ws.RobotButtons.Click(mine);
-        Check(map.ElementAt(1, 0) == MapHandler.MapElement.Wall,
+        Check(map.ElementAt(1, 0) == MapHandler.MapElement.Empty && map.GoldMined == 1,
             "mining an already mined cell does nothing");
         ws.RobotButtons.Click(forward);           // downward, off the mined cell
         Check(map.IdentifyRobot(out _) is { X: 0, Y: 2 },
             "the robot can step off the mined cell");
-        Check(map.ElementAt(1, 0) == MapHandler.MapElement.Wall,
-            "the mined cell stays a wall behind");
+        Check(map.ElementAt(1, 0) == MapHandler.MapElement.Empty,
+            "the mined cell stays empty behind");
         Check(map.IsMined(1, 0), "the mined mark stays after the robot walks off");
 
-        // Green means passable: the robot can walk back over its own mined cell.
+        // A mined cell is an ordinary empty cell: the robot can walk back over it.
         ws.RobotButtons.Click(turnLeft);          // down -> right
         ws.RobotButtons.Click(turnLeft);          // right -> up
         ws.RobotButtons.Click(forward);
@@ -849,18 +855,14 @@ print count
         Check(categories.Count == 7, "seven toolbox categories");
 
         // The literals live together: number, true and false are all just atoms you
-        // drop into a field, and `is there` (a function call) is not one of them.
+        // drop into a field, and `isThere` (a function call) is not one of them.
         BlockCategory values = categories.Single(c => c.Name == "Value");
         var literalKinds = values.Factories.Select(f => f().Kind).ToHashSet();
         Check(literalKinds.SetEquals(new[] { BlockKind.Number, BlockKind.Boolean }),
             "the Value category holds number + true + false and nothing else");
-        // `is there` plus the three cell blocks: the cells are values for the sensing
-        // function, never entries in the variable dropdown.
         var sensingKinds = categories.Single(c => c.Name == "Sensing").Factories
             .Select(f => f().Kind).ToHashSet();
-        Check(sensingKinds.SetEquals(new[]
-                { BlockKind.IsThere, BlockKind.Empty, BlockKind.Wall, BlockKind.Gold }),
-            "Sensing holds is-there plus the three cell blocks");
+        Check(sensingKinds.SetEquals(new[] { BlockKind.IsThere }), "Sensing holds isThere");
         Check(!categories.Single(c => c.Name == "Sensing").Factories
                 .Any(f => f().Kind == BlockKind.Variable),
             "no variable reporter hides in Sensing");
@@ -869,7 +871,7 @@ print count
             "variable references stay in Variables");
         Check(categories.Single(c => c.Name == "Variables").Factories
                 .All(f => f().Kind is BlockKind.Set or BlockKind.Variable),
-            "the cell blocks are not part of the variable group");
+            "the Variables group holds set and variable references only");
 
         var kinds = new HashSet<BlockKind>();
         int factories = 0;
@@ -958,14 +960,14 @@ print count
         // The property is the restriction, not the keyboard path: no caller can hand
         // this field anything MineCode could not write.
         n.Text = "a1b22c333444d";
-        Check(n.Text == "122333444", "assignment strips letters and caps at 9 digits");
+        Check(n.Text == "100", "assignment strips letters and caps at the language's 100");
         n.Text = "00042";
         Check(n.Text == "42", "leading zeros drop so the shown number is the literal");
         n.Text = "";
         Check(n.Text == "0", "an empty assignment can never reach the converter");
         n.Text = "1";
         foreach (char digit in "7777777777777777") n.InputChar(digit);
-        Check(n.Text.Length == NumberBlock.MaxDigits, "the field stops at its digit cap");
+        Check(n.Text == "17", "typing stops before the value would pass 100");
         n.Text = "1";
 
         ws.CommitEditing();
@@ -1069,11 +1071,9 @@ print count
         Healthy(ws, "set added");
         Check(set.Slots[0].SelectedName == null, "a fresh name field is unset");
 
-        // The menu lists only what the registry holds - and never the cell kinds.
+        // The menu lists only what the registry holds.
         Check(ws.Registry.TryCreate("count", out _), "registered count");
-        Check(ws.Registry.Contains("wall") && ws.Registry.IsBuiltin("wall"),
-            "a cell kind is known but was never registered as a variable");
-        Check(!ws.Registry.Names.Contains("wall"), "cell kinds stay out of the menu");
+        Check(!ws.Registry.Contains("wall"), "nothing is known until it is created");
 
         // A name field is a dropdown, not a drag handle.
         Rectangle nameField = set.Slots[0].Bounds;
@@ -1136,13 +1136,15 @@ print count
         Check(ws.Prompt.Error != null, "the duplicate is explained");
         ws.Prompt.Close();
 
-        // --- cell kinds stay reserved -------------------------------------
+        // --- keywords are refused and a typo can be erased -----------------
         ws.Prompt.Open(8, 8);
-        foreach (char c in "wall") ws.Prompt.InputChar(c);
-        Check(!ws.ConfirmPrompt(), "a cell kind can't become a variable");
-        Check(ws.Prompt.Error != null && ws.Prompt.Error.Contains("cell"),
-            "the refusal says it's a cell type");
-        Check(!ws.Registry.Names.Contains("wall"), "wall is not in the variable list");
+        foreach (char c in "while") ws.Prompt.InputChar(c);
+        Check(!ws.ConfirmPrompt(), "a keyword can't become a variable");
+        Check(ws.Prompt.Error != null && ws.Prompt.Error.Contains("keyword"),
+            "the refusal says it's a keyword");
+        Check(!ws.Registry.Names.Contains("while"), "while is not in the variable list");
+        ws.Prompt.Backspace();
+        Check(ws.Prompt.Text == "whil" && ws.Prompt.Error == null, "backspace erases and clears the error");
         ws.Prompt.Close();
 
         ws.Update(0, 0);
@@ -1354,25 +1356,18 @@ print count
         Check(result.Scripts.Length == 1, "one script came out");
         Check(Same(result.Scripts[0], parsed), "load → blocks → convert is the same AST, lines included");
 
-        // The file writes isThere's argument as its cell code; the blocks show the
-        // Sensing cell blocks for those codes.
-        var loadedKinds = Roots(ws).SelectMany(r => r.Flatten()).Select(b => b.Kind).ToHashSet();
-        Check(loadedKinds.Contains(BlockKind.Gold) && loadedKinds.Contains(BlockKind.Wall),
-            "isThere 2 / isThere 1 rebuilt as the gold / wall blocks");
-
         // Round it back to source: the editor's own writer has to reproduce the file.
         Check(Normalize(MineCodeWriter.Write(result.Scripts[0])) == Normalize(TargetSource),
             "the loaded script writes back as the source it came from");
 
-        // A file that names a cell in text - or gives isThere its cell code as a
-        // number - rebuilds as the Sensing block, and still writes back as the
-        // cell value it stands for.
+        // Words like wall are ordinary variable names, and isThere's argument stays
+        // the number or variable the file wrote.
         Workspace cells = NewWorkspace();
         Body cellScript;
         try
         {
             Console.SetOut(TextWriter.Null);
-            cellScript = MineCode.ParseCode("print isThere wall\nprint isThere 0\n");
+            cellScript = MineCode.ParseCode("set wall to 1\nset a to isThere wall\nset b to isThere 0\n");
         }
         finally
         {
@@ -1381,18 +1376,14 @@ print count
 
         List<string> cellProblems = AstLoader.Load(cells, [cellScript]);
         Check(cellProblems.Count == 0,
-            "the cell script loaded cleanly, got: " + string.Join(" | ", cellProblems));
-        Healthy(cells, "after loading the cell script");
-        var cellKinds = Roots(cells).SelectMany(r => r.Flatten()).Select(b => b.Kind).ToHashSet();
-        Check(cellKinds.Contains(BlockKind.Wall), "isThere wall rebuilt as the wall block");
-        Check(cellKinds.Contains(BlockKind.Empty), "isThere 0 rebuilt as the empty block");
-        Check(!cellKinds.Contains(BlockKind.Number), "no number block stands in for a cell code");
+            "the script loaded cleanly, got: " + string.Join(" | ", cellProblems));
+        Healthy(cells, "after loading the script");
 
         AstResult cellResult = cells.RunStart();
-        Check(cellResult.Errors.Count == 0, "the cell script converts cleanly");
+        Check(cellResult.Errors.Count == 0, "the script converts cleanly");
         Check(Normalize(MineCodeWriter.Write(cellResult.Scripts[0])) ==
-              "print isThere 1\nprint isThere 0",
-            "the cell blocks write back as their cell values");
+              "set wall to 1\nset a to isThere wall\nset b to isThere 0",
+            "the blocks write back exactly as the file had them");
     }
 
     /// <summary>
@@ -1534,81 +1525,214 @@ print count
             HatBlock hat = (HatBlock)ByKind(BlockKind.Start);
             ws.AddRootBlock(hat, new Vector2(60, 60));
 
-            StackBlock print = (StackBlock)ByKind(BlockKind.Print);
+            StackBlock set = (StackBlock)ByKind(BlockKind.Set);
+            ws.Registry.TryCreate("r", out _);
+            set.Slots[0].SelectedName = "r";
             ReporterBlock bin = (ReporterBlock)ByKind(kind);
             Check(bin.AttachToSlot(bin.Slots[0], Num(1)), $"{kind}: left operand");
             Check(bin.AttachToSlot(bin.Slots[1], Num(2)), $"{kind}: right operand");
-            Check(print.AttachToSlot(print.Slots[0], bin), $"{kind}: print operand");
-            Check(hat.Append(print), $"{kind}: chained under the hat");
+            Check(set.AttachToSlot(set.Slots[1], bin), $"{kind}: set value");
+            Check(hat.Append(set), $"{kind}: chained under the hat");
 
             AstResult result = AstConverter.Convert(ws);
             Check(result.Errors.Count == 0, $"{kind}: converts cleanly");
             Check(result.Scripts.Length == 1, $"{kind}: one script");
 
-            var value = (PrintInstruction)result.Scripts[0].Instructions[0];
+            var value = (SetInstruction)result.Scripts[0].Instructions[0];
             Check(value.Value is BinOp { operation: var actual } && actual == operation,
                 $"{kind}: maps to {operation}");
 
-            Check(Normalize(MineCodeWriter.Write(result.Scripts[0])) == $"print 1 {symbol} 2",
-                $"{kind}: renders as 'print 1 {symbol} 2'");
+            Check(Normalize(MineCodeWriter.Write(result.Scripts[0])) == $"set r to 1 {symbol} 2",
+                $"{kind}: renders as 'set r to 1 {symbol} 2'");
         }
     }
 
-    /// <summary>
-    /// The cell kinds are read-only constants. A variable reporter naming one must
-    /// become a Literal, otherwise the VM would read an uninitialized variable and
-    /// `isThere wall` would not mean `isThere 1`.
-    /// </summary>
-    static void TestBuiltins()
+    /// <summary>Variable naming: keywords are refused in any case, invalid names are
+    /// refused, and everything else is an ordinary variable.</summary>
+    static void TestVariableNames()
     {
+        var registry = new VariableRegistry();
+        foreach (string keyword in new[]
+                 {
+                     "and", "by", "else", "false", "forward", "here", "if", "isThere", "mine",
+                     "not", "or", "print", "set", "step", "to", "true", "turn", "while",
+                     "WHILE", "While", "ISTHERE", "If",
+                 })
+            Check(!registry.TryCreate(keyword, out _), $"{keyword} is refused as a name");
+        Check(!registry.TryCreate("9lives", out _), "9lives is refused");
+        Check(registry.TryCreate("gold", out _) && registry.TryCreate("wall", out _) &&
+              registry.TryCreate("empty", out _), "cell words are ordinary names");
+
         Workspace ws = NewWorkspace();
         HatBlock hat = (HatBlock)ByKind(BlockKind.Start);
         ws.AddRootBlock(hat, new Vector2(60, 60));
-
-        StackBlock printWall = (StackBlock)ByKind(BlockKind.Print);
-        Check(printWall.AttachToSlot(printWall.Slots[0], Var("wall")), "print took wall");
-        Check(hat.Append(printWall), "print wall chained");
-
-        StackBlock printUser = (StackBlock)ByKind(BlockKind.Print);
-        ws.Registry.TryCreate("arany", out _);
-        Check(printUser.AttachToSlot(printUser.Slots[0], Var("arany")), "print took arany");
-        Check(printWall.Append(printUser), "print arany chained");
-
-        StackBlock printThere = (StackBlock)ByKind(BlockKind.Print);
-        ReporterBlock there = (ReporterBlock)ByKind(BlockKind.IsThere);
-        Check(there.AttachToSlot(there.Slots[0], Var("gold")), "isThere took gold");
-        Check(printThere.AttachToSlot(printThere.Slots[0], there), "print took isThere");
-        Check(printUser.Append(printThere), "print isThere chained");
-
+        ws.Registry.TryCreate("gold", out _);
+        StackBlock print = (StackBlock)ByKind(BlockKind.Print);
+        Check(print.AttachToSlot(print.Slots[0], Var("gold")), "print took gold");
+        Check(hat.Append(print), "chained");
         AstResult result = AstConverter.Convert(ws);
-        Check(result.Errors.Count == 0, "built-ins convert cleanly");
-        Check(Normalize(MineCodeWriter.Write(result.Scripts[0])) ==
-              "print 1\nprint arany\nprint isThere 2",
-            "wall/gold become their cell values and user variables stay references");
+        Check(result.Errors.Count == 0 && Normalize(MineCodeWriter.Write(result.Scripts[0])) == "print gold",
+            "gold stays a variable reference");
+    }
 
-        // The Sensing cell blocks are the palette's way to spell those literals:
-        // each one converts to the cell code its name stands for.
-        foreach ((BlockKind kind, string name) in new[]
-                 { (BlockKind.Empty, "empty"), (BlockKind.Wall, "wall"), (BlockKind.Gold, "gold") })
+    /// <summary>Operators and isThere fit only right of `set ... to`; every other
+    /// field is a simpleval, and value blocks do not nest.</summary>
+    static void TestValueSlots()
+    {
+        Block Op()
         {
-            Workspace cellWs = NewWorkspace();
-            HatBlock cellHat = (HatBlock)ByKind(BlockKind.Start);
-            cellWs.AddRootBlock(cellHat, new Vector2(60, 60));
-
-            StackBlock printCell = (StackBlock)ByKind(BlockKind.Print);
-            Check(printCell.AttachToSlot(printCell.Slots[0], ByKind(kind)),
-                $"{name}: print took the cell block");
-            Check(cellHat.Append(printCell), $"{name}: chained");
-
-            AstResult cellResult = AstConverter.Convert(cellWs);
-            Check(cellResult.Errors.Count == 0, $"{name}: converts cleanly");
-            long expected = ws.Registry.GetBuiltinValue(name);
-            Check(cellResult.Scripts[0].Instructions[0] is PrintInstruction { Value: Literal cell } &&
-                  cell.value == expected,
-                $"{name}: maps to Literal({expected})");
-            Check(Normalize(MineCodeWriter.Write(cellResult.Scripts[0])) == $"print {expected}",
-                $"{name}: renders as 'print {expected}'");
+            ReporterBlock add = (ReporterBlock)ByKind(BlockKind.Add);
+            add.AttachToSlot(add.Slots[0], Num(1));
+            add.AttachToSlot(add.Slots[1], Num(2));
+            return add;
         }
+
+        foreach (BlockKind kind in new[] { BlockKind.Step, BlockKind.Turn, BlockKind.Print })
+        {
+            Block host = ByKind(kind);
+            Check(!host.AttachToSlot(host.Slots[0], Op()), $"{kind} refuses an operator");
+            Check(!host.AttachToSlot(host.Slots[0], ByKind(BlockKind.IsThere)), $"{kind} refuses isThere");
+            Check(host.AttachToSlot(host.Slots[0], Num(1)), $"{kind} takes a number");
+        }
+        foreach (BlockKind kind in new[] { BlockKind.If, BlockKind.While })
+        {
+            Block host = ByKind(kind);
+            Check(!host.AttachToSlot(host.Slots[0], Op()), $"{kind} refuses an operator");
+            Check(host.AttachToSlot(host.Slots[0], Var("x")), $"{kind} takes a variable");
+        }
+
+        Block set = ByKind(BlockKind.Set);
+        Check(set.AttachToSlot(set.Slots[1], Op()), "set takes an operator");
+        ReporterBlock not = (ReporterBlock)ByKind(BlockKind.Not);
+        Check(!not.AttachToSlot(not.Slots[0], Op()), "value blocks do not nest");
+        Check(not.AttachToSlot(not.Slots[0], Var("x")), "not takes a variable");
+    }
+
+    /// <summary>Control blocks nest three levels at most, however the chain is built.</summary>
+    static void TestNestingLimit()
+    {
+        CBlock C() => (CBlock)ByKind(BlockKind.While);
+
+        CBlock one = C(), two = C(), three = C();
+        Check(one.AttachInside0(two), "level 2 fits");
+        Check(two.AttachInside0(three), "level 3 fits");
+        Check(!three.AttachInside0(C()), "level 4 is refused inside");
+        StackBlock leaf = (StackBlock)ByKind(BlockKind.Mine);
+        Check(three.AttachInside0(leaf), "a plain block still fits at the deepest level");
+        Check(!leaf.AttachBelow(C()), "level 4 is refused below a block at level 3 body");
+        Check(!leaf.Append(C()), "level 4 is refused by Append too");
+        Check(three.Append(C()), "a sibling at level 3 is fine");
+
+        // A chain that is itself two levels deep needs two levels of room.
+        CBlock outer = C(), middle = C();
+        CBlock deep = C(), deeper = C();
+        Check(outer.AttachInside0(middle), "outer holds middle");
+        Check(deep.AttachInside0(deeper), "the dragged chain is two deep");
+        Check(!middle.AttachInside0(deep), "two more levels do not fit at level 2");
+
+        // The drag path offers no snap that would exceed the limit.
+        Workspace ws = NewWorkspace();
+        CBlock a = C(), b = C(), c = C();
+        Check(a.AttachInside0(b) && b.AttachInside0(c), "three levels built");
+        ws.AddRootBlock(a, new Vector2(60, 60));
+        ws.LayoutAll();
+        CBlock extra = C();
+        extra.Layout((int)c.InnerConnection.X, (int)c.InnerConnection.Y);
+        SnapTarget? snap = ws.FindSnap(extra);
+        Check(snap is null || snap.Kind != SnapKind.Inside || !ReferenceEquals(snap.Target, c),
+            "no snap into the third level for a fourth control block");
+        ws.Drop(extra, snap);
+        Check(c.Inner == null, "the deepest mouth stayed empty");
+        Healthy(ws, "after the refused drop");
+    }
+
+    /// <summary>Dropping above a block keeps that block in its script.</summary>
+    static void TestInsertBefore()
+    {
+        Workspace ws = NewWorkspace();
+        HatBlock hat = (HatBlock)ByKind(BlockKind.Start);
+        StackBlock first = (StackBlock)ByKind(BlockKind.Mine);
+        StackBlock second = (StackBlock)ByKind(BlockKind.Mine);
+        Check(hat.Append(first) && first.Append(second), "script built");
+        ws.AddRootBlock(hat, new Vector2(60, 60));
+
+        StackBlock inserted = (StackBlock)ByKind(BlockKind.Mine);
+        ws.Drop(inserted, new SnapTarget(SnapKind.Above, second, second.PreviousConnection, second.Width));
+        Check(ReferenceEquals(first.Next, inserted) && ReferenceEquals(inserted.Next, second),
+            "the block landed between its neighbours");
+        Check(Roots(ws).Count == 1 && ReferenceEquals(Roots(ws)[0], hat), "the script is still one chain under Start");
+        Healthy(ws, "after inserting before");
+    }
+
+    /// <summary>The live session: trace stepping, variables, the sensor, explored cells,
+    /// the reset on start, and manual control interrupting the run.</summary>
+    static void TestRunSession()
+    {
+        Workspace ws = NewWorkspace();
+        ws.LoadMap(new MapHandler(new[,] { { '>', '.', '.', '@', '.' } }));
+        MapHandler map = ws.MapPanel.Map!;
+
+        TextWriter savedOut = Console.Out;
+        Body script;
+        try
+        {
+            Console.SetOut(TextWriter.Null);
+            script = MineCode.ParseCode("set n to 1\nset g to isThere 2\nstep forward 3\nmine here\nprint n\n");
+        }
+        finally
+        {
+            Console.SetOut(savedOut);
+        }
+        Check(AstLoader.Load(ws, [script]).Count == 0, "the script loaded");
+        ws.Update(0, 0);
+        ws.RunProgram = r => ws.AttachSession(Runner.Begin(ws, r));
+
+        Check(map.IsExplored(0, 0) && !map.IsExplored(0, 1), "only the robot's cell starts explored");
+        Check(ws.Sensor.Reading == MapHandler.MapElement.Empty, "the sensor reads the cell ahead");
+        Check(!map.IsExplored(0, 1), "the sensor does not explore");
+
+        // A robot moved by hand must not carry into the run.
+        map.StepRobot();
+        Check(map.IdentifyRobot(out _) is { X: 1, Y: 0 } && map.IsExplored(0, 1), "a manual step explores");
+        ws.PressTrace();
+        Check(map.IdentifyRobot(out _) is { X: 0, Y: 0 } && !map.IsExplored(0, 1), "starting a run resets the map");
+        Check(ws.RunActive && ws.Tracing, "a trace is running");
+        Check(ws.ActiveLine == 1, "the trace waits on line 1");
+
+        void Next()
+        {
+            ws.PressTrace();
+            int guard = 0;
+            int? before = ws.ActiveLine;
+            do
+            {
+                ws.Update(0, 0);
+                System.Threading.Thread.Sleep(2);
+            } while (ws.ActiveLine == before && ws.RunActive && ++guard < 1000);
+        }
+
+        ws.Update(0, 0);
+        Check(ws.ActiveLine == 1 && ws.VariablesPanel.Lines.Count == 0, "without Next nothing runs");
+        Next();
+        Check(ws.ActiveLine == 2 && ws.VariablesPanel.Lines.SequenceEqual(new[] { "n = 1" }),
+            "after line 1 the value of n shows, line 2 is next");
+        Next();
+        Check(map.IsExplored(0, 1) && !map.IsExplored(0, 2), "isThere explored the cell ahead");
+        Check(ws.VariablesPanel.Lines.Contains("g = false"), "g shows its value");
+
+        // Taking manual control ends the run where it is, without restoring the map.
+        Next();
+        ws.RobotToggle.Click();
+        Check(!ws.RunActive && !ws.Running, "manual control ended the run");
+        Check(map.IdentifyRobot(out _) is { X: 3, Y: 0 }, "the robot stays where the program left it");
+        Check(map.IsExplored(0, 2), "the walked cells are explored");
+        Check(map.MineRobot() && map.GoldMined == 1, "manual mining works from there");
+        ws.RobotToggle.Click();
+
+        string log = File.ReadAllText(Runner.LogPath);
+        Check(log.TrimEnd().EndsWith("EOR"), "the interrupted run's log is closed");
+
+        if (File.Exists(Runner.LogPath)) File.Delete(Runner.LogPath);
     }
 
     /// <summary>Number and boolean reporters cover the two literal atoms in the grammar.</summary>
@@ -1651,8 +1775,8 @@ print count
             "42: renders as 'print 42'");
     }
 
-    /// <summary>The grammar's body rule is `INDENT instructions DEDENT` and instructions
-    /// are one or more, so an empty mouth cannot be written as MineCode.</summary>
+    /// <summary>The EBNF has block = { command }, so an empty mouth is a valid program
+    /// and survives the trip to text and back.</summary>
     static void TestEmptyMouths()
     {
         Workspace ws = NewWorkspace();
@@ -1660,22 +1784,15 @@ print count
         ws.AddRootBlock(hat, new Vector2(60, 60));
 
         CBlock ifBlock = (CBlock)ByKind(BlockKind.If, b => b is CBlock { HasElse: false });
+        Check(ifBlock.AttachToSlot(ifBlock.Slots[0], Var("x")), "if took its condition");
         Check(hat.Append(ifBlock), "empty if chained");
-        CBlock whileBlock = (CBlock)ByKind(BlockKind.While);
-        Check(ifBlock.Append(whileBlock), "empty while chained");
-
-        CBlock ifElse = (CBlock)ByKind(BlockKind.If, b => b is CBlock { HasElse: true });
-        Check(whileBlock.Append(ifElse), "if/else chained");
-        StackBlock thenBody = (StackBlock)ByKind(BlockKind.Mine);
-        Check(ifElse.AttachInside0(thenBody), "then mouth filled");
+        ws.Registry.TryCreate("x", out _);
 
         AstResult result = AstConverter.Convert(ws);
-        Check(HasError(result, ifBlock, "if body can't be empty"), "empty if body is badged");
-        Check(HasError(result, whileBlock, "while body can't be empty"), "empty while body is badged");
-        Check(HasError(result, ifElse, "else body can't be empty"), "empty else body is badged");
-
-        Check(result.Errors.Count(e => e.Message.Contains("body can't be empty")) == 3,
-            $"exactly three empty-body problems (got {result.Errors.Count})");
+        Check(result.Errors.Count == 0, "an empty body is not a problem");
+        Check(Normalize(MineCodeWriter.Write(result.Scripts[0])) == "if x", "it writes as a bare header");
+        Check(MineCode.ParseCode("if x\nprint 1\n").Instructions.Length == 2,
+            "the parser reads an empty body and carries on");
     }
 
     /// <summary>
@@ -1696,11 +1813,12 @@ print count
         CBlock ifBlock = (CBlock)ByKind(BlockKind.If);
         Check(set.Append(ifBlock), "draw smoke: empty if chained");
 
-        StackBlock print = (StackBlock)ByKind(BlockKind.Print);
+        StackBlock print = (StackBlock)ByKind(BlockKind.Set);
+        print.Slots[0].SelectedName = "sensed";
         ReporterBlock isThere = (ReporterBlock)ByKind(BlockKind.IsThere);
         Check(isThere.AttachToSlot(isThere.Slots[0], Var("wall")), "draw smoke: isThere took wall");
-        Check(print.AttachToSlot(print.Slots[0], isThere), "draw smoke: print took isThere");
-        Check(ifBlock.Append(print), "draw smoke: print chained");
+        Check(print.AttachToSlot(print.Slots[1], isThere), "draw smoke: set took isThere");
+        Check(ifBlock.Append(print), "draw smoke: set chained");
 
         // Put the number into edit mode so the input box, focus border and caret
         // all get drawn by this pass, not just the resting state.
@@ -1709,8 +1827,8 @@ print count
 
         ws.Update(0, 0);
 
-        // The print-output field: 20% x 10%, flush with the bar's right edge, under it.
-        Check(ws.Output.WPercent == 20 && ws.Output.HPercent == 10, "the output field is 20% x 10%");
+        // The print-output field: themed size, flush with the bar's right edge, under it.
+        Check(ws.Output.WPercent == Theme.OutputWPercent && ws.Output.HPercent == Theme.OutputHPercent, "the output field has its themed size");
         Check(ws.Output.X + ws.Output.Width == ws.StartButton.X + ws.StartButton.Width,
             "the output field's right edge lines up with the bar buttons");
         Check(ws.Output.Y >= ws.StartButton.Y + ws.StartButton.Height &&
@@ -1832,11 +1950,11 @@ print count
         StackBlock printEmpty = (StackBlock)ByKind(BlockKind.Print);
         Check(hat.Append(printEmpty), "empty-field print chained");
 
-        // 2. set empty to 1 - the cell kinds are read-only
+        // 2. set empty to 1 - nobody created empty
         StackBlock setBuiltin = (StackBlock)ByKind(BlockKind.Set);
         setBuiltin.Slots[0].SelectedName = "empty";
         Check(setBuiltin.AttachToSlot(setBuiltin.Slots[1], Num(1)), "set took its value");
-        Check(printEmpty.Append(setBuiltin), "read-only set chained");
+        Check(printEmpty.Append(setBuiltin), "second unknown set chained");
 
         // 3. set ghost to 1 - nobody created ghost
         StackBlock setUnknown = (StackBlock)ByKind(BlockKind.Set);
@@ -1855,15 +1973,15 @@ print count
         Check(printGhost.AttachToSlot(printGhost.Slots[0], ghostVar), "print took its variable");
         Check(setNoName.Append(printGhost), "unknown reporter chained");
 
-        // 6. print <isThere <1 + 2>> - the grammar only allows atoms in there
+        // 6. print <isThere <1 + 2>> - refused on the way in, so the field stays empty
         StackBlock printNest = (StackBlock)ByKind(BlockKind.Print);
         ReporterBlock nested = (ReporterBlock)ByKind(BlockKind.IsThere);
         ReporterBlock add = (ReporterBlock)ByKind(BlockKind.Add);
         Check(add.AttachToSlot(add.Slots[0], Num(1)), "add took its left operand");
         Check(add.AttachToSlot(add.Slots[1], Num(2)), "add took its right operand");
-        Check(nested.AttachToSlot(nested.Slots[0], add), "isThere took an expression");
-        Check(printNest.AttachToSlot(printNest.Slots[0], nested), "print took the expression");
-        Check(printGhost.Append(printNest), "nested expression chained");
+        Check(!nested.AttachToSlot(nested.Slots[0], add), "isThere refuses an expression");
+        Check(!printNest.AttachToSlot(printNest.Slots[0], nested), "print refuses isThere");
+        Check(printGhost.Append(printNest), "empty print chained");
 
         // 7. a block that is not a statement at all
         StackBlock notAStatement = new("helper", Cat(), Pos.Start, Pos.Start);
@@ -1888,11 +2006,11 @@ print count
         Check(result.Scripts.Length == 1, "only the hat's stack becomes a script");
 
         Check(HasError(result, printEmpty, "empty field"), "an empty field is badged");
-        Check(HasError(result, setBuiltin, "read-only"), "set empty to ... is badged");
+        Check(HasError(result, setBuiltin, "unknown variable empty"), "set empty to ... is badged");
         Check(HasError(result, setUnknown, "unknown variable ghost"), "an unknown set target is badged");
         Check(HasError(result, setNoName, "no variable chosen"), "a nameless set is badged");
         Check(HasError(result, ghostVar, "unknown variable ghost"), "an unknown reporter is badged");
-        Check(HasError(result, nested, "can't be nested here"), "a nested expression is badged");
+        Check(HasError(result, printNest, "empty field"), "the refused print stays empty and badged");
         Check(HasError(result, notAStatement, "can't be a step"), "a non-statement block is badged");
         Check(HasError(result, hatless, "no Start block"), "a hatless root is badged");
         Check(HasError(result, secondHat, "only one Start block"), "a second hat is badged");
@@ -1978,7 +2096,7 @@ print count
         Check(doomed.Errors.Count == 0, "the doomed script converts cleanly");
 
         Runner.Run(bare, doomed);
-        Check(bare.ActiveLine == null, "a failed run leaves no highlight behind");
+        Check(bare.ActiveLine == 1, "a failed run keeps the failing line highlighted");
         Check(bare.MapPanel.Map!.GoldMined == 0, "a failed mine mines nothing");
         string log = File.ReadAllText(Runner.LogPath);
         Check(log.Contains("E_NO_GOLD") && log.Contains("EOR"),
@@ -2024,18 +2142,17 @@ print count
         if (snapshots.Count == 3)
         {
             Check(snapshots[0].Length == 0, "set prints nothing");
-            Check(snapshots[1].Length == 1 && snapshots[1][0] == "n = 5",
-                "print n put 'n = 5' in the field, naming the variable");
-            Check(snapshots[2].Length == 2 && snapshots[2][0] == "n = 5" && snapshots[2][1] == "7",
+            Check(snapshots[1].Length == 1 && snapshots[1][0] == "5",
+                "print n put its value in the field");
+            Check(snapshots[2].Length == 2 && snapshots[2][0] == "5" && snapshots[2][1] == "7",
                 "print 7 appended its bare value after it");
         }
-        Check(ws.Output.Lines.Count == 2 && ws.Output.Lines[0] == "n = 5" && ws.Output.Lines[1] == "7",
-            $"the field ends holding the named variable and the literal, got [{string.Join(",", ws.Output.Lines)}]");
+        Check(ws.Output.Lines.Count == 2 && ws.Output.Lines[0] == "5" && ws.Output.Lines[1] == "7",
+            $"the field ends holding both printed values, got [{string.Join(",", ws.Output.Lines)}]");
         Check(ws.ActiveLine == null, "the highlight cleared after the print run");
 
         // The same story through the file path the app uses: AstLoader rebuilds the
-        // blocks from parsed source, then Start runs them - the naming must survive
-        // that route too.
+        // blocks from parsed source, then Start runs them.
         Workspace loaded = NewWorkspace();
         loaded.LoadMap(new MapHandler(new[,] { { '>' } }));
         TextWriter savedOut = Console.Out;
@@ -2057,8 +2174,8 @@ print count
         AstResult loadedResult = loaded.RunStart();
         Check(loadedResult.Errors.Count == 0, "the file-style script converts");
         Check(loaded.Output.Lines.Count == 2 &&
-              loaded.Output.Lines[0] == "7" && loaded.Output.Lines[1] == "n = 5",
-            $"the loaded script prints bare 7 then 'n = 5', got [{string.Join(",", loaded.Output.Lines)}]");
+              loaded.Output.Lines[0] == "7" && loaded.Output.Lines[1] == "5",
+            $"the loaded script prints 7 then 5, got [{string.Join(",", loaded.Output.Lines)}]");
         loaded.StopRun();
         Check(loaded.Output.Lines.Count == 0, "stopping clears the loaded run's output too");
 
@@ -2124,7 +2241,6 @@ print count
             "the robot is back where Start was clicked, facing the original way");
         Check(map.ElementAt(0, 2) == MapHandler.MapElement.Gold && !map.IsMined(0, 2) &&
               map.GoldMined == 0, "the mined gold came back");
-        Check(!ws.StopRequested(), "no click, no stop request");
 
         // With the session closed, the program can start again from the restored state.
         AstResult again = ws.RunStart();

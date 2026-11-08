@@ -11,6 +11,7 @@ public class BytecodeEmitter
     List<BytecodeInstruction> bytecodeInstructions;
     Bodies bodies;
     int count;
+    string[] variableNames;
     public static BytecodeEmitter CreateEmitter(Body astRoot)
     {
         Variables variables = [];
@@ -22,17 +23,21 @@ public class BytecodeEmitter
             metadata = BytecodeInstruction.MakeMetadata(-1, true)
         });
 
+        string[] names = new string[variables.Count];
+        foreach ((string name, int id) in variables) names[id] = name;
+
         BytecodeEmitter emitter = new BytecodeEmitter
         {
             bytecodeInstructions = body,
             count = variables.Count,
-            bodies = bodies
+            bodies = bodies,
+            variableNames = names
         };
 
         return emitter;
     }
 
-    static List<BytecodeInstruction> ParseBody(Body body, Variables variables, Bodies bodies, int layer)
+    static List<BytecodeInstruction> ParseBody(Body body, Variables variables, Bodies bodies, int layer, int startOffset = 0)
     {
         if (body.Instructions.Length == 0) return [];
 
@@ -40,7 +45,7 @@ public class BytecodeEmitter
 
         foreach (var inst in body.Instructions)
         {
-            int resumePc = bytecodeInstructions.Count + 1;
+            int resumePc = startOffset + bytecodeInstructions.Count + 1;
             bytecodeInstructions.AddRange(ParseInstruction(inst, variables, bodies, resumePc, layer));
         }
 
@@ -331,7 +336,7 @@ public class BytecodeEmitter
                     if (ifInstruction.elseBody != null)
                     {
                         elseInstructions.Add(BytecodeInstruction.Nop(ifInstruction.ElseLine)); // real, non-injected, line start
-                        elseInstructions.AddRange(ParseBody(ifInstruction.elseBody, variables, bodies, elseBody));
+                        elseInstructions.AddRange(ParseBody(ifInstruction.elseBody, variables, bodies, elseBody, startOffset: 1));
                     }
                     elseInstructions.Add(BytecodeInstruction.Ret(currentLayer, resumePc));
                     bodies[elseBody] = elseInstructions.ToArray();
@@ -381,6 +386,7 @@ public class BytecodeEmitter
         return new BytecodeHeader
         {
             variableCount = count,
+            VariableNames = variableNames,
             Main = bytecodeInstructions.ToArray(),
             Bodies = bodies
         };

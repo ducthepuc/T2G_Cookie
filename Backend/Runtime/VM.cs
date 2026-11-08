@@ -16,7 +16,10 @@ public class VMInstance
 
     int programCounter;
     int instructionCounter; // counts non injected instructions.
+    const int InstructionLimit = 1000;
     bool shouldRun;
+    bool ended;
+    ExecutionResult outcome;
     BytecodeInstruction[] instructions;
     readonly BytecodeInstruction[] copyInstructions;
     readonly Dictionary<int, BytecodeInstruction[]> bodies;
@@ -108,43 +111,85 @@ public class VMInstance
         if (!isReady)
             return ExecutionResult.ERROR(ExecutionResult.ErrorKind.E_UNINITIALIZED, 0);
 
-        while (programCounter<1000 && shouldRun && programCounter < instructions.Length)
+        ExecutionResult result;
+        while (!StepLine(out result)) { }
+        return result;
+    }
+
+    public int? NextLine =>
+        !ended && shouldRun && programCounter < instructions.Length && instructions[programCounter].metadata.line >= 0
+            ? instructions[programCounter].metadata.line
+            : null;
+
+    public bool Prepare(out ExecutionResult result) => ReachedEnd(out result);
+
+    public bool StepLine(out ExecutionResult result)
+    {
+        if (ReachedEnd(out result)) return true;
+
+        BytecodeInstruction executed;
+        ExecutionResult lineResult;
+        do
         {
-            if (instructionCounter >= 1000)
-            {
-                Implementor.logEor(true);
-                shouldRun = false;
-                return ExecutionResult.ERROR(ExecutionResult.ErrorKind.INSTRUCTION_COUNT_LIMIT_EXCEEDED, lineApi?.metadata.line ?? 0);
-            }
-
             ref var instruction = ref FetchDecode();
-            var executionResult = Execute(ref instruction);
+            lineResult = Execute(ref instruction);
+            executed = instruction;
+        } while (executed.metadata.injected && lineResult.Ok);
 
-            if (!instruction.metadata.injected || !executionResult.Ok)
-            {
-                Implementor.log(lineApi ?? instruction, executionResult, lineParam, lineRet);
-                lineApi = null;
-                lineParam = null;
-                lineRet = null;
-                instructionCounter++;
+        Implementor.log(lineApi ?? executed, lineResult, lineParam, lineRet);
+        lineApi = null;
+        lineParam = null;
+        lineRet = null;
+        instructionCounter++;
 
-                OnInstruction?.Invoke(instruction);
-            }
-            
+        OnInstruction?.Invoke(executed);
 
-            if (executionResult.Ok)
-            {
-                continue;
-            }
-
+        if (!lineResult.Ok)
+        {
+            ended = true;
+            outcome = lineResult;
             Implementor.logEor(false);
-            return executionResult;
+            result = lineResult;
+            return true;
         }
 
-        Implementor.logEor(false);
+        return ReachedEnd(out result);
+    }
 
+    bool ReachedEnd(out ExecutionResult result)
+    {
+        if (ended)
+        {
+            result = outcome;
+            return true;
+        }
 
-        return ExecutionResult.OK;
+        while (shouldRun && programCounter < instructions.Length && instructions[programCounter].metadata.line < 0)
+        {
+            ref var instruction = ref FetchDecode();
+            Execute(ref instruction);
+        }
+
+        if (!shouldRun || programCounter >= instructions.Length)
+        {
+            ended = true;
+            outcome = ExecutionResult.OK;
+            Implementor.logEor(false);
+            result = outcome;
+            return true;
+        }
+
+        if (instructionCounter >= InstructionLimit)
+        {
+            ended = true;
+            outcome = ExecutionResult.ERROR(ExecutionResult.ErrorKind.INSTRUCTION_COUNT_LIMIT_EXCEEDED, instructions[programCounter].metadata.line);
+            Implementor.logEor(true);
+            result = outcome;
+            return true;
+        }
+
+        result = ExecutionResult.OK;
+        return false;
     }
 
     public ref BytecodeInstruction FetchDecode()

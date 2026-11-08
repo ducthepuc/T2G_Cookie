@@ -11,8 +11,11 @@ namespace T2G_Cookie.Gui;
 /// </summary>
 class NumberBlock : ReporterBlock
 {
-    /// <summary>Field length cap; keeps the pill on screen and the literal sane.</summary>
-    public const int MaxDigits = 9;
+    /// <summary>The largest number the language allows in source code.</summary>
+    public const int MaxValue = 100;
+
+    /// <summary>Field length cap: the digits of <see cref="MaxValue"/>.</summary>
+    public const int MaxDigits = 3;
 
     string _text = "0";
 
@@ -33,9 +36,9 @@ class NumberBlock : ReporterBlock
     /// can never see a value the language cannot write.</summary>
     static string Sanitize(string value)
     {
-        var digits = new string(value.Where(char.IsAsciiDigit).Take(MaxDigits).ToArray());
-        digits = digits.TrimStart('0');
-        return digits.Length == 0 ? "0" : digits;
+        string digits = new string(value.Where(char.IsAsciiDigit).ToArray()).TrimStart('0');
+        if (digits.Length == 0) return "0";
+        return digits.Length > MaxDigits || int.Parse(digits) > MaxValue ? MaxValue.ToString() : digits;
     }
 
     /// <summary>True while the workspace is routing keyboard input into this block.</summary>
@@ -52,8 +55,9 @@ class NumberBlock : ReporterBlock
     public void InputChar(char c)
     {
         if (!char.IsAsciiDigit(c)) return;
-        if (_text.Length >= MaxDigits) return;
-        Text = _text == "0" ? c.ToString() : _text + c;
+        string next = _text == "0" ? c.ToString() : _text + c;
+        if (next.Length > MaxDigits || int.Parse(next) > MaxValue) return;
+        Text = next;
     }
 
     /// <summary>Trims the last digit. Trimming to nothing is fine: the setter

@@ -1,5 +1,7 @@
 ﻿using Shared;
+using T2G_Cookie.Backend;
 using T2G_Cookie.Backend.Parsing;
+using T2G_Cookie.Backend.VM;
 using T2G_Cookie.Gui;
 using T2G_Cookie.Shared;
 using T2G_Cookie.Shared.Ast;
@@ -7,9 +9,8 @@ using T2G_Cookie.Shared.Ast;
 namespace T2G_Cookie.Main;
 
 /// <summary>
-/// The application entry point. Optionally loads a map/code file from the args, then
-/// builds the block editor and runs it (this bootstrap used to live in Gui/Program.cs,
-/// but Main is the one executable in the solution).
+/// The application entry point: `robot input output` opens the editor on that file,
+/// `robot -q input output` runs the program without a window and exits.
 /// </summary>
 internal class Program
 {
@@ -18,47 +19,38 @@ internal class Program
 
     static int Main(string[] args)
     {
-        HandleInputFile? input = null;
-        MapHandler? map = null;
-        if (TryReadFile(args, out string? fileName))
-        {
-            input = new HandleInputFile(fileName!);
-            Console.WriteLine($"Code lines: {input.Code.Count}");
-            Console.WriteLine($"Map: {(input.Map != null ? $"{input.Map.GetLength(0)}x{input.Map.GetLength(1)}" : "null")}");
+        bool quiet = args.Length > 0 && args[0] == "-q";
+        string[] paths = quiet ? args[1..] : args;
 
-            char[,]? mapData = input.Map;
-            if (mapData != null &&
-                (mapData.GetLength(0) > MaxMapSize || mapData.GetLength(1) > MaxMapSize))
+        if (quiet)
+        {
+            if (paths.Length < 2)
             {
-                Console.WriteLine(
-                    $"the map is {mapData.GetLength(0)}x{mapData.GetLength(1)}, " +
-                    $"the biggest accepted size is {MaxMapSize}x{MaxMapSize}");
-                Console.WriteLine("the editor was not started");
+                Console.Error.WriteLine("usage: robot -q <input file> <output file>");
                 return 1;
             }
-
-            // The same structure the game world drives: it parses the matrix and the
-            // GUI map panel renders what it holds.
-            if (mapData != null)
-            {
-                try
-                {
-                    map = new MapHandler(mapData);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"could not read the map: {ex.Message}");
-                    Console.WriteLine("the editor was not started");
-                    return 1;
-                }
-            }
-
-            using var logger = new HandleOutputFile("output.log");
-            logger.Log("Test line 1");
-            logger.Log("Test line 2");
-            logger.Finish(false);
-            Console.WriteLine("Log test written to output.log");
+            return RunQuiet(paths[0], paths[1]);
         }
+
+        HandleInputFile? input = null;
+        MapHandler? map = null;
+        if (paths.Length > 0)
+        {
+            try
+            {
+                input = new HandleInputFile(paths[0]);
+                char[,] mapData = input.Map!;
+                if (mapData.GetLength(0) > MaxMapSize || mapData.GetLength(1) > MaxMapSize)
+                    throw new Exception($"the biggest accepted size is {MaxMapSize}x{MaxMapSize}");
+                map = new MapHandler(mapData);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"could not read {paths[0]}: {ex.Message}");
+                return 1;
+            }
+        }
+        if (paths.Length > 1) Runner.LogPath = paths[1];
 
         App app = new();
 
@@ -73,40 +65,56 @@ internal class Program
         Workspace workspace = new(Pos.Right(toolbox), Pos.Start, 100, 100);
         root.AddChild(workspace);
 
-        // The palette greys out the Start hat while the workspace already has one.
+        // The palette greys out the Start hat while the workspace already has one, and
+        // hands out no blocks while a program is running.
         toolbox.StartAvailable = () => !workspace.HasStartBlock;
+        toolbox.Locked = () => workspace.RunActive;
 
         app.Toolbox = toolbox;
         app.Workspace = workspace;
 
-        // Start hands the converted script to the Backend VM runner: every
-        // instruction moves the map robot and the running-line highlight, then
-        // presents the step (Runner.PresentStep drives Raylib mid-frame).
-        workspace.RunProgram = result => Runner.Run(workspace, result, Runner.PresentStep);
+        // Start hands the converted script to the VM; the workspace then advances the
+        // session once per frame.
+        workspace.RunProgram = result => workspace.AttachSession(Runner.Begin(workspace, result));
 
         // The window is open now, so the loader can measure text while it builds blocks.
-        if (input != null)
-        {
-            LoadScript(workspace, input.Code);
+        LoadScript(workspace, input?.Code ?? []);
+        workspace.LoadMap(map);
 
-            // The map panel shows the handler the same file produced.
-            workspace.LoadMap(map);
-
-            // The Save button writes the rendered script back through the same handler,
-            // in the format the reader takes (header, map rows, code).
-            workspace.SaveScript = input.Write;
-        }
+        // The Save button writes the rendered script back through the same handler,
+        // in the format the reader takes (header, map rows, code).
+        if (input != null) workspace.SaveScript = input.Write;
 
         app.Run();
         return 0;
     }
 
+    /// <summary>The -q mode: reads the input, runs the program, writes the log, exits.</summary>
+    static int RunQuiet(string inputPath, string outputPath)
+    {
+        try
+        {
+            var input = new HandleInputFile(inputPath);
+            Body ast = MineCode.ParseCode(string.Join('\n', input.Code));
+            BytecodeHeader header = BytecodeEmitter.CreateEmitter(ast).Generate();
+            VMInstance vm = VMInstance.CreateFromBytecode(header);
+            var spirit = new MachineSpirit(outputPath, new MapHandler(input.Map!));
+            spirit.Setup(vm);
+            vm.RunCode(false);
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"{inputPath}: {ex.Message}");
+            return 1;
+        }
+    }
+
     /// <summary>Parses the loaded lines as MineCode and rebuilds them as blocks in the
-    /// workspace; a program the parser can't read is reported, never thrown.</summary>
+    /// workspace. An empty program still gets its Start block, so it can be run and
+    /// built on; a program the parser can't read is reported, never thrown.</summary>
     static void LoadScript(Workspace workspace, List<string> code)
     {
-        if (code.Count == 0) return;
-
         try
         {
             Body script = MineCode.ParseCode(string.Join("\n", code));
@@ -117,24 +125,5 @@ internal class Program
         {
             Console.WriteLine("could not load the script: " + ex.Message);
         }
-    }
-
-    /// <summary>Resolves the input file from the args (`-q` takes the next argument as
-    /// the path). False when nothing usable was passed; the editor still starts.</summary>
-    static bool TryReadFile(string[] args, out string? fileName)
-    {
-        fileName = null;
-        if (args.Length == 0) return false;
-
-        int pathIndex = args[0].Equals("-q") ? 1 : 0;
-        if (args.Length <= pathIndex)
-        {
-            Console.WriteLine("Nincs fájl megadva.");
-            return false;
-        }
-
-        fileName = args[pathIndex];
-        Console.WriteLine(fileName);
-        return true;
     }
 }

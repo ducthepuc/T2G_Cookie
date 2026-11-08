@@ -74,6 +74,8 @@ public class MineCodeVisitor : MineCodeParserBaseVisitor<object>
 
     public override Body VisitBody([NotNull] MineCodeParser.BodyContext context)
     {
+        if (context.instructions() == null) return new Body([]);
+
         return new Body(VisitInstructions(context.instructions()));
     }
 

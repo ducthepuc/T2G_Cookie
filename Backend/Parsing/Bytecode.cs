@@ -10,6 +10,8 @@ public struct BytecodeHeader
     public Dictionary<int, BytecodeInstruction[]> Bodies;
 
     public int variableCount;
+
+    public string[] VariableNames;
 }
 
 [StructLayout(LayoutKind.Explicit)]

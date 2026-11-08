@@ -13,6 +13,10 @@ public class MachineSpirit : VMInstance.IVMAPI
     public readonly MapHandler mapHandler;
     public int GoldMined {get; private set;}
 
+    public event Action<Vector2Int>? CellEntered;
+
+    public event Action<Vector2Int>? CellSensed;
+
 
     public MachineSpirit(string logPath, MapHandler map)
     {
@@ -86,6 +90,7 @@ public class MachineSpirit : VMInstance.IVMAPI
             }
 
             position = new Vector2Int(position.X + direction.ModX, position.Y + direction.ModY);
+            CellEntered?.Invoke(position);
         }
 
         return VMInstance.ExecutionResult.OK;
@@ -100,6 +105,8 @@ public class MachineSpirit : VMInstance.IVMAPI
             result = false;        
             return VMInstance.ExecutionResult.ERROR(VMInstance.ExecutionResult.ErrorKind.E_BAD_ARG, line);    
         }
+
+        CellSensed?.Invoke(new Vector2Int(position.X + direction.ModX, position.Y + direction.ModY));
 
         if ((long) element == query.value)
         {

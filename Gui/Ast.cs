@@ -89,6 +89,10 @@ sealed class AstResult
 /// </summary>
 static class AstConverter
 {
+    /// <summary>Stands in for an unfilled field, so the live text view shows the hole.
+    /// Any program containing one has an error, so it can never run.</summary>
+    static Variable Missing => new("?");
+
     sealed class Ctx(VariableRegistry registry)
     {
         public readonly VariableRegistry Registry = registry;
@@ -185,16 +189,13 @@ static class AstConverter
                 {
                     string? name = b.Slots.Count > 0 ? b.Slots[0].SelectedName : null;
                     if (name == null) ctx.Error(b, "no variable chosen");
-                    else if (ctx.Registry.IsBuiltin(name)) ctx.Error(b, $"{name} is read-only");
                     else if (!ctx.Registry.Contains(name)) ctx.Error(b, $"unknown variable {name}");
-                    return new SetInstruction(name ?? "", ValueOf(b, 1, ctx), line);
+                    return new SetInstruction(name ?? "?", ValueOf(b, 1, ctx), line);
                 }
             case BlockKind.If:
                 {
                     if (b is not CBlock c) return BrokenStatement(b, ctx, "if block is not a C-block");
                     var body = new Body(ConvertChain(c.Inner, ctx).ToArray());
-                    if (body.Instructions.Length == 0)
-                        ctx.Error(c, "if body can't be empty");
 
                     Body? elseBody = null;
                     int elseLine = -1;
@@ -203,8 +204,6 @@ static class AstConverter
                         elseLine = ctx.TakeLine(); // the `else` keyword gets a line of its own
                         c.RunLineAlt = elseLine;   // its Nop highlight lands on the if block
                         elseBody = new Body(ConvertChain(c.Inner2, ctx).ToArray());
-                        if (elseBody.Instructions.Length == 0)
-                            ctx.Error(c, "else body can't be empty");
                     }
                     return new IfInstruction(ValueOf(b, 0, ctx), body, elseBody, line, elseLine);
                 }
@@ -212,8 +211,6 @@ static class AstConverter
                 {
                     if (b is not CBlock c) return BrokenStatement(b, ctx, "while block is not a C-block");
                     var body = new Body(ConvertChain(c.Inner, ctx).ToArray());
-                    if (body.Instructions.Length == 0)
-                        ctx.Error(c, "while body can't be empty");
                     return new WhileInstruction(ValueOf(b, 0, ctx), body, line);
                 }
             default:
@@ -228,13 +225,13 @@ static class AstConverter
         if (index >= b.Slots.Count)
         {
             ctx.Error(b, "missing field");
-            return new Literal(0);
+            return Missing;
         }
         Slot slot = b.Slots[index];
         if (slot.Content == null)
         {
             ctx.Error(b, "empty field: drop a value block in");
-            return new Literal(0);
+            return Missing;
         }
         return ConvertValue(slot.Content, ctx);
     }
@@ -264,27 +261,15 @@ static class AstConverter
                     if (name == null)
                     {
                         ctx.Error(b, "no variable chosen");
-                        return new Literal(0);
+                        return Missing;
                     }
                     if (!ctx.Registry.Contains(name))
                     {
                         ctx.Error(b, $"unknown variable {name}");
-                        return new Literal(0);
+                        return Missing;
                     }
-                    // The cell kinds are read-only constants (empty=0, wall=1, gold=2),
-                    // not variables the VM ever seeds. Emit the value they stand for so
-                    // `isThere wall` is exactly `isThere 1` in MineCode.
-                    return ctx.Registry.IsBuiltin(name)
-                        ? new Literal(ctx.Registry.GetBuiltinValue(name))
-                        : new Variable(name);
+                    return new Variable(name);
                 }
-
-            // The cell blocks in the Sensing palette: each stands for its literal
-            // cell code, so `isThere wall` is exactly `isThere 1`.
-            case BlockKind.Empty:
-            case BlockKind.Wall:
-            case BlockKind.Gold:
-                return new Literal(ctx.Registry.GetBuiltinValue(VariableRegistry.CellName(b.Kind)));
 
             case BlockKind.IsThere:
                 return new IsThere(AsSimple(ValueOf(b, 0, ctx), b, ctx));

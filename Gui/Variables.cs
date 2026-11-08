@@ -3,63 +3,22 @@ using Raylib_CsLo;
 
 namespace T2G_Cookie.Gui;
 
-/// <summary>
-/// Where variable names come from: everything the user creates. The three cell kinds
-/// are not variables - they have their own blocks in the Sensing palette - but their
-/// names stay reserved: they never appear in the dropdown, they can't be created, and
-/// a hand-built reporter named after one still converts to the literal it stands for.
-/// </summary>
+/// <summary>Where variable names come from: everything the user creates.</summary>
 sealed class VariableRegistry
 {
-    /// <summary>The cell kinds `isThere` reads, by MineCode name.</summary>
-    public static readonly string[] BuiltinNames = ["empty", "wall", "gold"];
-    static readonly Dictionary<string, int> BuiltinValues = new()
+    /// <summary>The language's keywords, reserved in every letter case.</summary>
+    static readonly HashSet<string> Keywords = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["empty"] = 0,
-        ["wall"] = 1,
-        ["gold"] = 2
+        "and", "by", "else", "false", "forward", "here", "if", "isThere", "mine",
+        "not", "or", "print", "set", "step", "to", "true", "turn", "while"
     };
 
     readonly List<string> _names = new();
 
-    /// <summary>The creatable variables, in menu order. Cell kinds are never listed.</summary>
+    /// <summary>The creatable variables, in menu order.</summary>
     public IReadOnlyList<string> Names => _names;
 
-    /// <summary>True for the cell kind names, which are known but not variables.</summary>
-    public bool IsBuiltin(string name) => BuiltinValues.ContainsKey(name);
-
-    /// <summary>Known means listed as a variable, or standing for a cell kind.</summary>
-    public bool Contains(string name) => _names.Contains(name) || IsBuiltin(name);
-
-    /// <summary>The cell code a built-in stands for, or -1 when the name isn't a built-in.</summary>
-    public int GetBuiltinValue(string name) => BuiltinValues.GetValueOrDefault(name, -1);
-
-    /// <summary>The Sensing block kind a cell name gets, or null when it isn't a cell.</summary>
-    public static BlockKind? CellKind(string name) => name switch
-    {
-        "empty" => BlockKind.Empty,
-        "wall" => BlockKind.Wall,
-        "gold" => BlockKind.Gold,
-        _ => null
-    };
-
-    /// <summary>The block kind for a literal cell code (0/1/2), or null when the
-    /// number isn't a cell - derived from the same table the name lookup reads.</summary>
-    public static BlockKind? CellKindOfValue(long value)
-    {
-        foreach ((string name, int code) in BuiltinValues)
-            if (code == value) return CellKind(name);
-        return null;
-    }
-
-    /// <summary>The cell name a cell block kind stands for.</summary>
-    public static string CellName(BlockKind kind) => kind switch
-    {
-        BlockKind.Empty => "empty",
-        BlockKind.Wall => "wall",
-        BlockKind.Gold => "gold",
-        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "not a cell kind")
-    };
+    public bool Contains(string name) => _names.Contains(name);
 
     /// <summary>MineCode identifiers: [a-zA-Z][a-zA-Z0-9]* (see MineCodeLexer.g4).</summary>
     public static bool IsValidName(string name)
@@ -72,9 +31,9 @@ sealed class VariableRegistry
             error = "names start with a letter, then letters/digits";
             return false;
         }
-        if (IsBuiltin(name))
+        if (Keywords.Contains(name))
         {
-            error = $"{name} is a cell type, pick another name";
+            error = $"{name} is a keyword, pick another name";
             return false;
         }
         if (_names.Contains(name))
@@ -100,22 +59,20 @@ sealed class DropDown
     public Rectangle LocalBounds { get; private set; }
     public string? Picked { get; private set; }
 
-    // Muted entries (the built-ins) stay selectable: picking one is how you use it.
-    // The read-only rule for `set` shows up as a badge, not as a dead menu row.
-    readonly List<(string Label, bool Muted)> _entries = new();
+    readonly List<string> _entries = new();
     int _hover = -1;
     string? _selected;
 
-    public void Open(Rectangle anchor, IEnumerable<(string Label, bool Muted)> entries,
+    public void Open(Rectangle anchor, IEnumerable<string> entries,
                      string? selected, int maxW, int maxH)
     {
         _entries.Clear();
         _entries.AddRange(entries);
-        _entries.Add(("Make a variable...", false));
+        _entries.Add("Make a variable...");
         _selected = selected;
 
         int w = 140;
-        foreach ((string label, _) in _entries)
+        foreach (string label in _entries)
             w = Math.Max(w, Raylib.MeasureText(label, Theme.FontSize) + 28);
         if (_selected != null) w += 16;
         w = Math.Min(w, Math.Max(80, maxW - 16));
@@ -145,7 +102,7 @@ sealed class DropDown
     {
         int i = IndexAt(localMouse);
         if (i < 0) return false;
-        Picked = i == _entries.Count - 1 ? MakeNew : _entries[i].Label;
+        Picked = i == _entries.Count - 1 ? MakeNew : _entries[i];
         return true;
     }
 
@@ -174,10 +131,9 @@ sealed class DropDown
             int ey = y + 4 + i * Theme.EntryHeight;
             if (i == _hover)
                 Raylib.DrawRectangle(x + 2, ey, w - 4, Theme.EntryHeight, Theme.PopupHover);
-            Color c = _entries[i].Muted ? Raylib.LIGHTGRAY : Theme.TextDark;
-            Raylib.DrawText(_entries[i].Label, x + 10, ey + (Theme.EntryHeight - Theme.FontSize) / 2, Theme.FontSize, c);
+            Raylib.DrawText(_entries[i], x + 10, ey + (Theme.EntryHeight - Theme.FontSize) / 2, Theme.FontSize, Theme.TextDark);
 
-            if (_entries[i].Label == _selected)
+            if (_entries[i] == _selected)
                 DrawCheck(x + w - 18, ey + 7, Theme.StartGreen);
         }
     }

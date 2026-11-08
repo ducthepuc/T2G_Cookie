@@ -10,6 +10,9 @@ sealed class BlockCategory
     public string Name { get; }
     public Color Color { get; }
     public Color DarkColor { get; }
+
+    /// <summary>Small text beside the title in the palette.</summary>
+    public string? Hint { get; init; }
     public IReadOnlyList<Func<Block>> Factories => _factories;
 
     public BlockCategory(string name, Color color, Color darkColor)
@@ -40,7 +43,10 @@ static class BlockLibrary
         var variables = new BlockCategory("Variables", Theme.Rgb(232, 91, 91), Theme.Rgb(190, 60, 60));
         var values = new BlockCategory("Value", Theme.Rgb(14, 152, 140), Theme.Rgb(9, 116, 108));
         var operators = new BlockCategory("Operators", Theme.Rgb(76, 201, 124), Theme.Rgb(51, 151, 84));
-        var sensing = new BlockCategory("Sensing", Theme.Rgb(102, 178, 255), Theme.Rgb(68, 139, 204));
+        var sensing = new BlockCategory("Sensing", Theme.Rgb(102, 178, 255), Theme.Rgb(68, 139, 204))
+        {
+            Hint = "0 empty, 1 wall, 2 gold"
+        };
 
         motion
             // Label matches the lexer keyword (STEP: 'step forward'), so what the block
@@ -55,9 +61,9 @@ static class BlockLibrary
         control
             // The green-flag hat: exactly one may exist (the toolbox greys it out while one does).
             .Add(() => new HatBlock([Seg.T("Start clicked")], control, Pos.Start, Pos.Start) { Kind = BlockKind.Start })
-            .Add(() => new CBlock([Seg.T("if "), Seg.V(), Seg.T(" then")], control, Pos.Start, Pos.Start) { Kind = BlockKind.If })
-            .Add(() => new CBlock([Seg.T("if "), Seg.V(), Seg.T(" then")], control, Pos.Start, Pos.Start, hasElse: true) { Kind = BlockKind.If })
-            .Add(() => new CBlock([Seg.T("while "), Seg.V(), Seg.T(" do")], control, Pos.Start, Pos.Start) { Kind = BlockKind.While });
+            .Add(() => new CBlock([Seg.T("if "), Seg.V()], control, Pos.Start, Pos.Start) { Kind = BlockKind.If })
+            .Add(() => new CBlock([Seg.T("if "), Seg.V()], control, Pos.Start, Pos.Start, hasElse: true) { Kind = BlockKind.If })
+            .Add(() => new CBlock([Seg.T("while "), Seg.V()], control, Pos.Start, Pos.Start) { Kind = BlockKind.While });
 
         variables
             .Add(() => new StackBlock([Seg.T("set "), Seg.N(), Seg.T(" to "), Seg.V()], variables, Pos.Start, Pos.Start) { Kind = BlockKind.Set })
@@ -86,13 +92,7 @@ static class BlockLibrary
             .Add(() => new ReporterBlock([Seg.T("not "), Seg.V()], operators, Pos.Start, Pos.Start) { Kind = BlockKind.Not });
 
         sensing
-            .Add(() => new ReporterBlock([Seg.T("is there "), Seg.V()], sensing, Pos.Start, Pos.Start) { Kind = BlockKind.IsThere })
-            // The cell kinds: the values isThere reads. Their own blocks here, not
-            // entries in the variable dropdown - each one converts to the literal
-            // cell code it stands for (empty=0, wall=1, gold=2).
-            .Add(() => new ReporterBlock([Seg.T("empty")], sensing, Pos.Start, Pos.Start) { Kind = BlockKind.Empty })
-            .Add(() => new ReporterBlock([Seg.T("wall")], sensing, Pos.Start, Pos.Start) { Kind = BlockKind.Wall })
-            .Add(() => new ReporterBlock([Seg.T("gold")], sensing, Pos.Start, Pos.Start) { Kind = BlockKind.Gold });
+            .Add(() => new ReporterBlock([Seg.T("isThere "), Seg.V()], sensing, Pos.Start, Pos.Start) { Kind = BlockKind.IsThere });
 
         return new List<BlockCategory> { motion, output, control, variables, values, operators, sensing };
     }

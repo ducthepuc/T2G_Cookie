@@ -50,6 +50,9 @@ public sealed class Toolbox : Frame
     /// <summary>Predicate for the singleton hat: false greys "Start clicked" out.</summary>
     internal Func<bool>? StartAvailable { get; set; }
 
+    /// <summary>True while the palette hands out no blocks: a program is running.</summary>
+    internal Func<bool>? Locked { get; set; }
+
     internal Toolbox(Func<int> x, Func<int> y, int wPercent, int hPercent, IEnumerable<BlockCategory> categories)
         : base(x, y, wPercent, hPercent)
     {
@@ -153,7 +156,7 @@ public sealed class Toolbox : Frame
             {
                 JumpToCategoryAt(localMouse.Y);
             }
-            else if (hovered != null && Available(hovered))
+            else if (hovered != null && Available(hovered) && Locked?.Invoke() != true)
             {
                 DragBlock = hovered.Factory();
                 // Keep the in-flight block out of Element.DrawAll: App draws it once,
@@ -196,7 +199,10 @@ public sealed class Toolbox : Frame
         foreach (BlockCategory category in _categories)
         {
             int ty = (int)(screenY + _categoryY[category] - _scroll);
-            Raylib.DrawText(category.Name, screenX + Theme.CategoryStripWidth + Theme.PalettePadding, ty + 4, 18, Theme.TextDark);
+            int titleX = screenX + Theme.CategoryStripWidth + Theme.PalettePadding;
+            Raylib.DrawText(category.Name, titleX, ty + 4, 18, Theme.TextDark);
+            if (category.Hint != null)
+                Raylib.DrawText(category.Hint, titleX + Raylib.MeasureText(category.Name, 18) + 8, ty + 8, 12, Theme.PlaceholderText);
         }
         foreach (var item in _items)
             item.Template.DrawChain(screenX, screenY);

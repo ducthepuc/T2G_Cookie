@@ -6,14 +6,24 @@
     <ProjectReference Include="..\Gui\Gui.csproj" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <ApplicationIcon>icon.ico</ApplicationIcon>
+  </PropertyGroup>
+
   <ItemGroup>
     <None Update="testCode.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="../assets/**/*" LinkBase="assets/" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <AssemblyName>robot</AssemblyName>
+    <RootNamespace>T2G_Cookie.Main</RootNamespace>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>

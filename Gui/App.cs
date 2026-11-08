@@ -5,8 +5,8 @@ namespace T2G_Cookie.Gui;
 
 public class App
 {
-    public const int ScreenW = 1000;
-    public const int ScreenH = 650;
+    public const int ScreenW = 1280;
+    public const int ScreenH = 720;
 
     public Toolbox? Toolbox { get; set; }
     public Workspace? Workspace { get; set; }
@@ -25,6 +25,9 @@ public class App
 
         RayGui.GuiLoadStyleDefault();
         Raylib.SetTargetFPS(120);
+
+        // Esc cancels the name prompt; by default raylib would also close the window.
+        Raylib.SetExitKey(KeyboardKey.KEY_NULL);
     }
 
     public void Run() => Draw();

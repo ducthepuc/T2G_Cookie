@@ -25,6 +25,23 @@ sealed class OutputField : Frame
     /// the instruction it just executed is a print.</summary>
     public void Append(string text) => Lines.Add(text);
 
+    // Indices into Lines that are runtime errors, drawn in the badge colour.
+    readonly HashSet<int> _errorLines = new();
+
+    /// <summary>Adds a runtime error to the panel.</summary>
+    public void AppendError(string text)
+    {
+        _errorLines.Add(Lines.Count);
+        Lines.Add(text);
+    }
+
+    /// <summary>Empties the panel.</summary>
+    public void Clear()
+    {
+        Lines.Clear();
+        _errorLines.Clear();
+    }
+
     /// <summary>Gold mined so far / gold the map shipped with; the workspace keeps
     /// these in step with the map every frame.</summary>
     public int GoldMined { get; set; }
@@ -65,7 +82,8 @@ sealed class OutputField : Frame
             for (int i = start; i < Lines.Count; i++)
             {
                 int y = drawY + PadY + (i - start) * (TextSize + LineSpacing);
-                Raylib.DrawText(Lines[i], drawX + PadX, y, TextSize, Theme.TextDark);
+                Raylib.DrawText(Lines[i], drawX + PadX, y, TextSize,
+                    _errorLines.Contains(i) ? Theme.Badge : Theme.TextDark);
             }
         }
 

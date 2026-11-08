@@ -1,154 +1,234 @@
-using System.Threading;
 using Raylib_CsLo;
 using T2G_Cookie.Backend;
 using T2G_Cookie.Backend.VM;
 using T2G_Cookie.Gui;
 using T2G_Cookie.Shared;
+using T2G_Cookie.Shared.Values;
 
 namespace T2G_Cookie.Main;
 
 /// <summary>
 /// The bridge between the block editor and the Backend VM: compiles the workspace's
-/// converted script to bytecode, runs it through MachineSpirit, and - on every
-/// instruction the VM reports through OnInstruction - pushes the spirit's position
-/// onto the map panel and moves the gold highlight to the block segment owning that
-/// instruction's source line, presenting the frame so the step is visible.
-/// The Backend stays untouched; everything it needs comes in through its own API.
+/// converted script to bytecode and hands back a <see cref="RunSession"/> the app loop
+/// advances, one source line at a time.
 /// </summary>
 static class Runner
 {
-    /// <summary>MachineSpirit's execution log, next to the app's working directory.</summary>
-    public const string LogPath = "output.log";
+    /// <summary>MachineSpirit's execution log: the output file named on the command
+    /// line, or this default when none was given.</summary>
+    public static string LogPath { get; set; } = "output.log";
 
-    /// <summary>How long one executed instruction stays on screen, so the robot
-    /// movement and the highlight can actually be followed.</summary>
-    public const int StepDelayMs = 60;
-
-    /// <summary>
-    /// Runs the script to completion. <paramref name="present"/> is invoked after
-    /// every instruction, once the robot and the highlight are updated - the live
-    /// window passes <see cref="PresentStep"/>; the self-test passes a recorder or
-    /// nothing at all (there is no frame to swap there).
-    /// </summary>
-    public static void Run(Workspace ws, AstResult validation, Action? present = null)
+    /// <summary>Creates the session for a validated script, or null (with the reason on
+    /// the console) when there is nothing that can run.</summary>
+    public static RunSession? Begin(Workspace ws, AstResult validation)
     {
         if (validation.Errors.Count > 0)
         {
             Console.WriteLine("run: fix the problems first");
-            return;
+            return null;
         }
         if (validation.Scripts.Length == 0)
         {
             Console.WriteLine("run: nothing to run (add a Start block)");
-            return;
+            return null;
         }
 
         MapHandler? map = ws.MapPanel.Map;
         if (map == null || map.IdentifyRobot(out _) == null)
         {
             Console.WriteLine("run: load a map with a robot first");
-            return;
+            return null;
         }
 
-        OutputApi? api = null;
         try
         {
-            BytecodeHeader header = BytecodeEmitter.CreateEmitter(validation.Scripts[0]).Generate();
-            VMInstance vm = VMInstance.CreateFromBytecode(header);
-            var spirit = new MachineSpirit(LogPath, map);
-            spirit.Setup(vm); // makes the spirit the VM's API (move/turn/mine/isThere)
-
-            // Wrap it: everything is still MachineSpirit's job, but the wrapper keeps
-            // the value the VM resolved into log's parameter - it is the only place
-            // it survives (the VM clears it before OnInstruction fires).
-            api = new OutputApi(spirit);
-            vm.Implementor = api;
-
-            vm.OnInstruction += instruction =>
-            {
-                // Runs after the instruction: the map marker is the spirit now, and the
-                // highlight jumps to the block segment the instruction's line belongs to.
-                ws.SyncRunState(spirit.position, spirit.direction);
-                ws.HighlightLine(instruction.metadata.line >= 0 ? instruction.metadata.line : null);
-
-                // When the executed statement is a print, show what it printed: the
-                // argument was resolved moments ago and handed to log. The line tells
-                // the workspace whether it was a variable, so the name can go with it.
-                if (instruction.instructionKind == BytecodeInstruction.InstructionKind.Print &&
-                    api.TakePrint() is { } printed)
-                    ws.AppendPrint(printed, instruction.metadata.line);
-
-                present?.Invoke();
-
-                // The Stop button, polled on the input the step's frame just delivered:
-                // close the session (which restores the pre-start map) and break out of
-                // RunCode - the VM has no pause, so an exception is the only way out.
-                if (ws.StopRequested())
-                {
-                    ws.StopRun();
-                    throw new RunAborted();
-                }
-                return true; // the VM ignores it today; "keep going" is the honest answer
-            };
-
-            VMInstance.ExecutionResult result = vm.RunCode(false);
-
-            if (!result.Ok)
-            {
-                ws.AppendPrint(result.Error.ErrorKind.ToString(), result.Error.Line);
-                ws.HighlightLine(result.Error.Line);
-            }else
-            {
-                ws.SyncRunState(spirit.position, spirit.direction);
-                ws.HighlightLine(null);
-                Console.WriteLine(result.Ok
-                    ? $"run: finished, {spirit.GoldMined} gold mined"
-                    : $"run: stopped with {result.Error.ErrorKind}, {spirit.GoldMined} gold mined");
-            }
-        }
-        catch (RunAborted)
-        {
-            // Stop was clicked mid-run: the session is closed and the map restored
-            // already - only the spirit's log still needs the end-of-run marker the
-            // unwind skipped.
-            if (api is { } finished) finished.logEor(false);
-            Console.WriteLine("run: stopped");
+            return new RunSession(ws, map, validation);
         }
         catch (Exception ex)
         {
-            ws.StopRun(); // close the session Start opened (restore is a no-op if nothing ran)
+            ws.StopRun();
             ws.HighlightLine(null);
             Console.WriteLine("run: " + ex.Message);
+            return null;
         }
     }
 
     /// <summary>
-    /// Presents the state an instruction just produced: compose the whole UI, swap it
-    /// onto the screen, hold the step, then open a fresh frame for the app loop to
-    /// continue where it left off (UpdateAll is mid-flight, so the clear here is the
-    /// frame's own background clear).
+    /// Runs the script to completion without waiting for frames. <paramref name="present"/>
+    /// is invoked after every processed line. The self-test drives the runner this way.
     /// </summary>
-    public static void PresentStep()
+    public static void Run(Workspace ws, AstResult validation, Action? present = null)
     {
-        Element.DrawAll();
-        Raylib.EndDrawing();
-        Thread.Sleep(StepDelayMs);
-        Raylib.BeginDrawing();
-        Raylib.ClearBackground(Raylib.WHITE);
+        RunSession? session = Begin(ws, validation);
+        if (session == null) return;
+
+        while (!session.Done)
+        {
+            session.Advance();
+            while (session.Walking) session.Advance();
+            if (!session.Done) present?.Invoke();
+        }
     }
 }
 
-/// <summary>Thrown by the instruction handler when Stop was clicked: the only way
-/// out of a RunCode in flight, since the VM has no pause and the Backend stays
-/// untouched.</summary>
-sealed class RunAborted : Exception { }
+/// <summary>
+/// One program run on the VM. The app loop calls <see cref="Tick"/> every frame, so the
+/// window stays alive during a run: Stop, the manual-control checkbox, Next and closing
+/// the window are all ordinary input handled by the workspace.
+/// </summary>
+sealed class RunSession : IRunSession
+{
+    readonly Workspace _ws;
+    readonly MapHandler _map;
+    readonly MachineSpirit _spirit;
+    readonly VMInstance _vm;
+    readonly OutputApi _api;
+    readonly string[] _names;
+
+    // Cells a step already walked in the VM but the screen has not shown yet.
+    readonly Queue<Vector2Int> _trail = new();
+
+    VMInstance.ExecutionResult? _outcome;
+    double _nextAt;
+
+    public bool Done { get; private set; }
+
+    /// <summary>True while a multi-cell step is still being animated.</summary>
+    public bool Walking => _trail.Count > 0;
+
+    public RunSession(Workspace ws, MapHandler map, AstResult validation)
+    {
+        _ws = ws;
+        _map = map;
+
+        BytecodeHeader header = BytecodeEmitter.CreateEmitter(validation.Scripts[0]).Generate();
+        _names = header.VariableNames;
+        _vm = VMInstance.CreateFromBytecode(header);
+
+        _spirit = new MachineSpirit(Runner.LogPath, map);
+        _spirit.Setup(_vm);
+        _spirit.CellEntered += _trail.Enqueue;
+        _spirit.CellSensed += map.MarkExplored;
+
+        // Wrap the spirit: the VM clears the print parameter before OnInstruction
+        // fires, so the wrapper is the only place it survives.
+        _api = new OutputApi(_spirit);
+        _vm.Implementor = _api;
+        _vm.OnInstruction += OnLine;
+
+        if (_vm.Prepare(out VMInstance.ExecutionResult result)) _outcome = result;
+        if (ws.Tracing) ws.HighlightLine(_vm.NextLine);
+    }
+
+    bool OnLine(BytecodeInstruction instruction)
+    {
+        _ws.HighlightLine(instruction.metadata.line >= 0 ? instruction.metadata.line : null);
+
+        if (instruction.instructionKind == BytecodeInstruction.InstructionKind.Print &&
+            _api.TakePrint() is { } printed)
+            _ws.AppendPrint(printed);
+
+        return true;
+    }
+
+    /// <summary>One frame of the run: waits out the step delay and, while tracing, the
+    /// Next request, then advances.</summary>
+    public void Tick()
+    {
+        if (Done) return;
+
+        double now = Raylib.GetTime();
+        if (now < _nextAt) return;
+
+        bool waitsForUser = _ws.Tracing && !Walking && _outcome == null;
+        if (waitsForUser && !_ws.TakeStepRequest()) return;
+
+        Advance();
+        _nextAt = now + _ws.StepDelaySeconds;
+    }
+
+    /// <summary>Does the next visible thing: walks one cell, closes a finished run, or
+    /// processes one source line.</summary>
+    public void Advance()
+    {
+        if (Done) return;
+
+        if (_trail.TryDequeue(out Vector2Int cell))
+        {
+            _map.MarkExplored(cell);
+            _ws.SyncRunState(cell, _spirit.direction);
+            return;
+        }
+
+        if (_outcome is { } outcome)
+        {
+            Finish(outcome);
+            return;
+        }
+
+        try
+        {
+            if (_vm.StepLine(out VMInstance.ExecutionResult result)) _outcome = result;
+        }
+        catch (Exception ex)
+        {
+            Done = true;
+            _ws.StopRun();
+            _ws.HighlightLine(null);
+            Console.WriteLine("run: " + ex.Message);
+            return;
+        }
+
+        if (_ws.Tracing && _outcome == null) _ws.HighlightLine(_vm.NextLine);
+        ShowVariables();
+        if (!Walking) _ws.SyncRunState(_spirit.position, _spirit.direction);
+    }
+
+    void Finish(VMInstance.ExecutionResult outcome)
+    {
+        Done = true;
+        _ws.SyncRunState(_spirit.position, _spirit.direction);
+
+        if (outcome.Ok)
+        {
+            _ws.HighlightLine(null);
+            Console.WriteLine($"run: finished, {_spirit.GoldMined} gold mined");
+            return;
+        }
+
+        var error = outcome.Error;
+        bool limit = error.ErrorKind == VMInstance.ExecutionResult.ErrorKind.INSTRUCTION_COUNT_LIMIT_EXCEEDED;
+        _ws.AppendError(error.ErrorKind.ToString(), limit ? null : error.Line);
+        _ws.HighlightLine(limit ? null : error.Line);
+        Console.WriteLine($"run: stopped with {error.ErrorKind}, {_spirit.GoldMined} gold mined");
+    }
+
+    void ShowVariables()
+    {
+        var lines = new List<string>();
+        for (int i = 0; i < _names.Length; i++)
+            if (OutputApi.Format(_vm.Variables[i]) is { } value)
+                lines.Add($"{_names[i]} = {value}");
+        _ws.ShowVariables(lines);
+    }
+
+    /// <summary>Ends a run that is still going: the log gets its end marker and the
+    /// map shows where the program really is.</summary>
+    public void Abort()
+    {
+        if (Done) return;
+        Done = true;
+
+        while (_trail.TryDequeue(out Vector2Int cell)) _map.MarkExplored(cell);
+        _ws.SyncRunState(_spirit.position, _spirit.direction);
+        _api.logEor(false);
+    }
+}
 
 /// <summary>
-/// MachineSpirit, wrapped for the run: every API call is delegated unchanged (the
-/// spirit still owns the robot, the map and the execution log), but the wrapper
-/// remembers the parameter the VM handed to log for the statement it just executed -
-/// for a print that is the resolved print value, and it is the only place it
-/// survives, because the VM clears it before OnInstruction fires.
+/// MachineSpirit, wrapped for the run: every API call is delegated unchanged, but the
+/// wrapper remembers the parameter the VM handed to log for the statement it just
+/// executed - for a print that is the resolved print value.
 /// </summary>
 sealed class OutputApi : VMInstance.IVMAPI
 {
@@ -183,8 +263,9 @@ sealed class OutputApi : VMInstance.IVMAPI
         return text;
     }
 
-    /// <summary>Same rendering the VM itself uses when it writes the value to the console.</summary>
-    static string? Format(ValueUnion v) => v.type switch
+    /// <summary>Same rendering the VM itself uses when it writes the value to the
+    /// console; null for a value that is not a number or boolean yet.</summary>
+    public static string? Format(ValueUnion v) => v.type switch
     {
         ValueUnion.ValueType.Number => v.value.ToString(),
         ValueUnion.ValueType.Boolean => v.boolean ? "true" : "false",

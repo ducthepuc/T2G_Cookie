@@ -55,7 +55,18 @@ static class Theme
     // print-output field under the bar: status line (3 + 12px text) plus a gap
     public const int OutputTopGap = 21;
     public const int OutputWPercent = 20;
-    public const int OutputHPercent = 10;
+    public const int OutputHPercent = 16;
+
+    // the source / variables column left of the output
+    public const int SourceWPercent = 18;
+    public const int SourceHPercent = 48;
+    public const int VariablesHPercent = 24;
+
+    // the run controls on the bar
+    public const int SpeedButtonW = 124;
+
+    // the sensor row under the map
+    public const int SensorH = 30;
 
     // map panel under the print-output field
     public const int MapTopGap = 8;
@@ -71,7 +82,7 @@ static class Theme
     /// <summary>Everything the panels below the map need; the map clamps its height
     /// so the stack always fits on screen.</summary>
     public const int RobotStackBelow =
-        RobotPanelGap + RobotToggleH + RobotPanelGap + RobotButtonsH + RobotPanelGap;
+        RobotPanelGap + SensorH + RobotPanelGap + RobotToggleH + RobotPanelGap + RobotButtonsH + RobotPanelGap;
 
     // colors
     public static readonly Color WorkspaceBg = Rgb(240, 244, 255);
@@ -100,6 +111,10 @@ static class Theme
     public static readonly Color MapWall = Rgb(226, 61, 61);
     public static readonly Color MapMined = Rgb(76, 175, 80);
     public static readonly Color MapRobot = Rgb(52, 120, 246);
+    public static readonly Color MapExplored = Rgb(232, 245, 233);
+    public static readonly Color MapFog = new Color(120, 126, 140, 150);
+    public static readonly Color TraceButton = Rgb(126, 87, 194);
+    public static readonly Color RunLineBg = Rgb(255, 236, 170);
 
     // the outline around the block segment the VM is currently running
     public static readonly Color RunHighlight = Rgb(255, 193, 7);

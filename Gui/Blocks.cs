@@ -18,9 +18,6 @@ enum BlockKind
     Number,
     Boolean,
     Variable,
-    Empty,
-    Wall,
-    Gold,
     IsThere,
     Not,
     Add,
@@ -150,6 +147,7 @@ abstract class Block : Element, IInteractable
         if (slot.Kind == SlotKind.Name) return false;
         if (slot.Content != null) return false;
         if (reporter is not ReporterBlock) return false;
+        if (!AcceptsValue(reporter)) return false;
         if (reporter.Previous != null || reporter.Next != null ||
             reporter.Container != null || reporter.Slot != null) return false;
         if (!CanJoin(reporter)) return false;
@@ -159,6 +157,49 @@ abstract class Block : Element, IInteractable
         RecomputeWidth();
         return true;
     }
+
+    /// <summary>
+    /// A field holds a plain value (number, boolean, variable): the grammar has
+    /// `simpleval` everywhere except right of `set ... to`, the only place operator
+    /// blocks and isThere may go.
+    /// </summary>
+    public bool AcceptsValue(Block reporter) => Kind == BlockKind.Set || reporter.Slots.Count == 0;
+
+    /// <summary>How deep control blocks may nest (the spec's three levels).</summary>
+    public const int MaxControlLevels = 3;
+
+    /// <summary>How many control blocks surround this block.</summary>
+    public int EnclosingLevels()
+    {
+        int levels = 0;
+        for (CBlock? c = ChainHead.Container; c != null; c = c.ChainHead.Container)
+            levels++;
+        return levels;
+    }
+
+    /// <summary>The deepest control-block nesting inside this chain.</summary>
+    public int ControlLevels()
+    {
+        int levels = 0;
+        for (Block? b = this; b != null; b = b.Next)
+            if (b is CBlock c)
+                levels = Math.Max(levels, 1 + Math.Max(c.Inner?.ControlLevels() ?? 0, c.Inner2?.ControlLevels() ?? 0));
+        return levels;
+    }
+
+    Block ChainHead
+    {
+        get
+        {
+            Block b = this;
+            while (b.Previous != null) b = b.Previous;
+            return b;
+        }
+    }
+
+    /// <summary>False when the chain would nest control blocks too deep at this level.</summary>
+    protected bool FitsDepth(Block chain, int enclosing) =>
+        enclosing + chain.ControlLevels() <= MaxControlLevels;
 
     public virtual void OnHover() { IsHovered = true; Raylib.SetMouseCursor(MouseCursor.MOUSE_CURSOR_POINTING_HAND); }
     public virtual void OnUnhover() { IsHovered = false; Raylib.SetMouseCursor(MouseCursor.MOUSE_CURSOR_ARROW); }
@@ -386,6 +427,7 @@ abstract class Block : Element, IInteractable
     public bool Append(Block other)
     {
         if (other.Previous != null || other.Container != null || !CanJoin(other)) return false;
+        if (!FitsDepth(other, EnclosingLevels())) return false;
 
         Block tail = Tail;
         tail.Next = other;
@@ -400,6 +442,7 @@ abstract class Block : Element, IInteractable
     public bool AttachBelow(Block stack)
     {
         if (stack.Previous != null || stack.Container != null || !CanJoin(stack)) return false;
+        if (!FitsDepth(stack, EnclosingLevels())) return false;
 
         Block? oldNext = Next;
         // Read the tail exactly once: linking it to oldNext below changes what a second
@@ -667,6 +710,7 @@ sealed class CBlock : Block
     public bool AttachInside0(Block stack)
     {
         if (stack.Previous != null || stack.Container != null || !CanJoin(stack)) return false;
+        if (!FitsDepth(stack, EnclosingLevels() + 1)) return false;
 
         Block? oldInner = Inner;
         Block tail = stack.Tail;
@@ -688,6 +732,7 @@ sealed class CBlock : Block
     {
         if (!HasElse) return false;
         if (stack.Previous != null || stack.Container != null || !CanJoin(stack)) return false;
+        if (!FitsDepth(stack, EnclosingLevels() + 1)) return false;
 
         Block? oldInner = Inner2;
         Block tail = stack.Tail;

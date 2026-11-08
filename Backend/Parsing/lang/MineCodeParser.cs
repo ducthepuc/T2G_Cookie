@@ -202,15 +202,24 @@ public partial class MineCodeParser : Parser {
 	public BodyContext body() {
 		BodyContext _localctx = new BodyContext(Context, State);
 		EnterRule(_localctx, 2, RULE_body);
+		int _la;
 		try {
 			EnterOuterAlt(_localctx, 1);
 			{
-			State = 40;
-			Match(INDENT);
-			State = 41;
-			instructions();
-			State = 42;
-			Match(DEDENT);
+			State = 44;
+			ErrorHandler.Sync(this);
+			_la = TokenStream.LA(1);
+			if (_la==INDENT) {
+				{
+				State = 40;
+				Match(INDENT);
+				State = 41;
+				instructions();
+				State = 42;
+				Match(DEDENT);
+				}
+			}
+
 			}
 		}
 		catch (RecognitionException re) {
@@ -262,17 +271,17 @@ public partial class MineCodeParser : Parser {
 		try {
 			EnterOuterAlt(_localctx, 1);
 			{
-			State = 45;
+			State = 47;
 			ErrorHandler.Sync(this);
 			_la = TokenStream.LA(1);
 			do {
 				{
 				{
-				State = 44;
+				State = 46;
 				instruction();
 				}
 				}
-				State = 47;
+				State = 49;
 				ErrorHandler.Sync(this);
 				_la = TokenStream.LA(1);
 			} while ( (((_la) & ~0x3f) == 0 && ((1L << _la) & 2808L) != 0) );
@@ -340,65 +349,65 @@ public partial class MineCodeParser : Parser {
 		InstructionContext _localctx = new InstructionContext(Context, State);
 		EnterRule(_localctx, 6, RULE_instruction);
 		try {
-			State = 66;
+			State = 68;
 			ErrorHandler.Sync(this);
 			switch (TokenStream.LA(1)) {
 			case STEP:
 				EnterOuterAlt(_localctx, 1);
 				{
-				State = 49;
+				State = 51;
 				stepInstruction();
-				State = 50;
+				State = 52;
 				Match(NEWLINE);
 				}
 				break;
 			case TURN:
 				EnterOuterAlt(_localctx, 2);
 				{
-				State = 52;
+				State = 54;
 				turnInstruction();
-				State = 53;
+				State = 55;
 				Match(NEWLINE);
 				}
 				break;
 			case MINE:
 				EnterOuterAlt(_localctx, 3);
 				{
-				State = 55;
+				State = 57;
 				mineInstruction();
-				State = 56;
+				State = 58;
 				Match(NEWLINE);
 				}
 				break;
 			case PRINT:
 				EnterOuterAlt(_localctx, 4);
 				{
-				State = 58;
+				State = 60;
 				printInstruction();
-				State = 59;
+				State = 61;
 				Match(NEWLINE);
 				}
 				break;
 			case SET:
 				EnterOuterAlt(_localctx, 5);
 				{
-				State = 61;
+				State = 63;
 				setInstruction();
-				State = 62;
+				State = 64;
 				Match(NEWLINE);
 				}
 				break;
 			case IF:
 				EnterOuterAlt(_localctx, 6);
 				{
-				State = 64;
+				State = 66;
 				ifInstruction();
 				}
 				break;
 			case WHILE:
 				EnterOuterAlt(_localctx, 7);
 				{
-				State = 65;
+				State = 67;
 				whileInstruction();
 				}
 				break;
@@ -452,9 +461,9 @@ public partial class MineCodeParser : Parser {
 		try {
 			EnterOuterAlt(_localctx, 1);
 			{
-			State = 68;
+			State = 70;
 			Match(STEP);
-			State = 69;
+			State = 71;
 			expression();
 			}
 		}
@@ -504,9 +513,9 @@ public partial class MineCodeParser : Parser {
 		try {
 			EnterOuterAlt(_localctx, 1);
 			{
-			State = 71;
+			State = 73;
 			Match(TURN);
-			State = 72;
+			State = 74;
 			expression();
 			}
 		}
@@ -553,7 +562,7 @@ public partial class MineCodeParser : Parser {
 		try {
 			EnterOuterAlt(_localctx, 1);
 			{
-			State = 74;
+			State = 76;
 			Match(MINE);
 			}
 		}
@@ -603,9 +612,9 @@ public partial class MineCodeParser : Parser {
 		try {
 			EnterOuterAlt(_localctx, 1);
 			{
-			State = 76;
+			State = 78;
 			Match(PRINT);
-			State = 77;
+			State = 79;
 			expression();
 			}
 		}
@@ -657,13 +666,13 @@ public partial class MineCodeParser : Parser {
 		try {
 			EnterOuterAlt(_localctx, 1);
 			{
-			State = 79;
-			Match(SET);
-			State = 80;
-			Match(IDENTIFIER);
 			State = 81;
-			Match(TO);
+			Match(SET);
 			State = 82;
+			Match(IDENTIFIER);
+			State = 83;
+			Match(TO);
+			State = 84;
 			expression();
 			}
 		}
@@ -725,24 +734,24 @@ public partial class MineCodeParser : Parser {
 		try {
 			EnterOuterAlt(_localctx, 1);
 			{
-			State = 84;
-			Match(IF);
-			State = 85;
-			expression();
 			State = 86;
-			Match(NEWLINE);
+			Match(IF);
 			State = 87;
+			expression();
+			State = 88;
+			Match(NEWLINE);
+			State = 89;
 			body();
-			State = 91;
+			State = 93;
 			ErrorHandler.Sync(this);
 			_la = TokenStream.LA(1);
 			if (_la==ELSE) {
 				{
-				State = 88;
-				Match(ELSE);
-				State = 89;
-				Match(NEWLINE);
 				State = 90;
+				Match(ELSE);
+				State = 91;
+				Match(NEWLINE);
+				State = 92;
 				body();
 				}
 			}
@@ -799,13 +808,13 @@ public partial class MineCodeParser : Parser {
 		try {
 			EnterOuterAlt(_localctx, 1);
 			{
-			State = 93;
-			Match(WHILE);
-			State = 94;
-			expression();
 			State = 95;
-			Match(NEWLINE);
+			Match(WHILE);
 			State = 96;
+			expression();
+			State = 97;
+			Match(NEWLINE);
+			State = 98;
 			body();
 			}
 		}
@@ -861,34 +870,34 @@ public partial class MineCodeParser : Parser {
 		ExpressionContext _localctx = new ExpressionContext(Context, State);
 		EnterRule(_localctx, 22, RULE_expression);
 		try {
-			State = 102;
+			State = 104;
 			ErrorHandler.Sync(this);
-			switch ( Interpreter.AdaptivePredict(TokenStream,5,Context) ) {
+			switch ( Interpreter.AdaptivePredict(TokenStream,6,Context) ) {
 			case 1:
 				EnterOuterAlt(_localctx, 1);
 				{
-				State = 98;
+				State = 100;
 				atom();
 				}
 				break;
 			case 2:
 				EnterOuterAlt(_localctx, 2);
 				{
-				State = 99;
+				State = 101;
 				functionExpression();
 				}
 				break;
 			case 3:
 				EnterOuterAlt(_localctx, 3);
 				{
-				State = 100;
+				State = 102;
 				binExpression();
 				}
 				break;
 			case 4:
 				EnterOuterAlt(_localctx, 4);
 				{
-				State = 101;
+				State = 103;
 				unaryExpression();
 				}
 				break;
@@ -940,9 +949,9 @@ public partial class MineCodeParser : Parser {
 		try {
 			EnterOuterAlt(_localctx, 1);
 			{
-			State = 104;
+			State = 106;
 			Match(ISTHERE);
-			State = 105;
+			State = 107;
 			atom();
 			}
 		}
@@ -992,9 +1001,9 @@ public partial class MineCodeParser : Parser {
 		try {
 			EnterOuterAlt(_localctx, 1);
 			{
-			State = 107;
+			State = 109;
 			Match(NOT);
-			State = 108;
+			State = 110;
 			atom();
 			}
 		}
@@ -1058,9 +1067,9 @@ public partial class MineCodeParser : Parser {
 		try {
 			EnterOuterAlt(_localctx, 1);
 			{
-			State = 110;
+			State = 112;
 			atom();
-			State = 111;
+			State = 113;
 			_la = TokenStream.LA(1);
 			if ( !((((_la) & ~0x3f) == 0 && ((1L << _la) & 33538048L) != 0)) ) {
 			ErrorHandler.RecoverInline(this);
@@ -1069,7 +1078,7 @@ public partial class MineCodeParser : Parser {
 				ErrorHandler.ReportMatch(this);
 			    Consume();
 			}
-			State = 112;
+			State = 114;
 			atom();
 			}
 		}
@@ -1120,7 +1129,7 @@ public partial class MineCodeParser : Parser {
 		try {
 			EnterOuterAlt(_localctx, 1);
 			{
-			State = 114;
+			State = 116;
 			_la = TokenStream.LA(1);
 			if ( !((((_la) & ~0x3f) == 0 && ((1L << _la) & 1006632960L) != 0)) ) {
 			ErrorHandler.RecoverInline(this);
@@ -1143,39 +1152,40 @@ public partial class MineCodeParser : Parser {
 	}
 
 	private static int[] _serializedATN = {
-		4,1,30,117,2,0,7,0,2,1,7,1,2,2,7,2,2,3,7,3,2,4,7,4,2,5,7,5,2,6,7,6,2,7,
+		4,1,30,119,2,0,7,0,2,1,7,1,2,2,7,2,2,3,7,3,2,4,7,4,2,5,7,5,2,6,7,6,2,7,
 		7,7,2,8,7,8,2,9,7,9,2,10,7,10,2,11,7,11,2,12,7,12,2,13,7,13,2,14,7,14,
-		2,15,7,15,1,0,3,0,34,8,0,1,0,3,0,37,8,0,1,0,1,0,1,1,1,1,1,1,1,1,1,2,4,
-		2,46,8,2,11,2,12,2,47,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,
-		1,3,1,3,1,3,1,3,1,3,3,3,67,8,3,1,4,1,4,1,4,1,5,1,5,1,5,1,6,1,6,1,7,1,7,
-		1,7,1,8,1,8,1,8,1,8,1,8,1,9,1,9,1,9,1,9,1,9,1,9,1,9,3,9,92,8,9,1,10,1,
-		10,1,10,1,10,1,10,1,11,1,11,1,11,1,11,3,11,103,8,11,1,12,1,12,1,12,1,13,
-		1,13,1,13,1,14,1,14,1,14,1,14,1,15,1,15,1,15,0,0,16,0,2,4,6,8,10,12,14,
-		16,18,20,22,24,26,28,30,0,2,1,0,14,24,1,0,26,29,113,0,33,1,0,0,0,2,40,
-		1,0,0,0,4,45,1,0,0,0,6,66,1,0,0,0,8,68,1,0,0,0,10,71,1,0,0,0,12,74,1,0,
-		0,0,14,76,1,0,0,0,16,79,1,0,0,0,18,84,1,0,0,0,20,93,1,0,0,0,22,102,1,0,
-		0,0,24,104,1,0,0,0,26,107,1,0,0,0,28,110,1,0,0,0,30,114,1,0,0,0,32,34,
-		5,25,0,0,33,32,1,0,0,0,33,34,1,0,0,0,34,36,1,0,0,0,35,37,3,4,2,0,36,35,
-		1,0,0,0,36,37,1,0,0,0,37,38,1,0,0,0,38,39,5,0,0,1,39,1,1,0,0,0,40,41,5,
-		1,0,0,41,42,3,4,2,0,42,43,5,2,0,0,43,3,1,0,0,0,44,46,3,6,3,0,45,44,1,0,
-		0,0,46,47,1,0,0,0,47,45,1,0,0,0,47,48,1,0,0,0,48,5,1,0,0,0,49,50,3,8,4,
-		0,50,51,5,25,0,0,51,67,1,0,0,0,52,53,3,10,5,0,53,54,5,25,0,0,54,67,1,0,
-		0,0,55,56,3,12,6,0,56,57,5,25,0,0,57,67,1,0,0,0,58,59,3,14,7,0,59,60,5,
-		25,0,0,60,67,1,0,0,0,61,62,3,16,8,0,62,63,5,25,0,0,63,67,1,0,0,0,64,67,
-		3,18,9,0,65,67,3,20,10,0,66,49,1,0,0,0,66,52,1,0,0,0,66,55,1,0,0,0,66,
-		58,1,0,0,0,66,61,1,0,0,0,66,64,1,0,0,0,66,65,1,0,0,0,67,7,1,0,0,0,68,69,
-		5,3,0,0,69,70,3,22,11,0,70,9,1,0,0,0,71,72,5,4,0,0,72,73,3,22,11,0,73,
-		11,1,0,0,0,74,75,5,5,0,0,75,13,1,0,0,0,76,77,5,6,0,0,77,78,3,22,11,0,78,
-		15,1,0,0,0,79,80,5,7,0,0,80,81,5,28,0,0,81,82,5,8,0,0,82,83,3,22,11,0,
-		83,17,1,0,0,0,84,85,5,9,0,0,85,86,3,22,11,0,86,87,5,25,0,0,87,91,3,2,1,
-		0,88,89,5,10,0,0,89,90,5,25,0,0,90,92,3,2,1,0,91,88,1,0,0,0,91,92,1,0,
-		0,0,92,19,1,0,0,0,93,94,5,11,0,0,94,95,3,22,11,0,95,96,5,25,0,0,96,97,
-		3,2,1,0,97,21,1,0,0,0,98,103,3,30,15,0,99,103,3,24,12,0,100,103,3,28,14,
-		0,101,103,3,26,13,0,102,98,1,0,0,0,102,99,1,0,0,0,102,100,1,0,0,0,102,
-		101,1,0,0,0,103,23,1,0,0,0,104,105,5,13,0,0,105,106,3,30,15,0,106,25,1,
-		0,0,0,107,108,5,12,0,0,108,109,3,30,15,0,109,27,1,0,0,0,110,111,3,30,15,
-		0,111,112,7,0,0,0,112,113,3,30,15,0,113,29,1,0,0,0,114,115,7,1,0,0,115,
-		31,1,0,0,0,6,33,36,47,66,91,102
+		2,15,7,15,1,0,3,0,34,8,0,1,0,3,0,37,8,0,1,0,1,0,1,1,1,1,1,1,1,1,3,1,45,
+		8,1,1,2,4,2,48,8,2,11,2,12,2,49,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,
+		3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,3,3,69,8,3,1,4,1,4,1,4,1,5,1,5,1,5,1,6,1,
+		6,1,7,1,7,1,7,1,8,1,8,1,8,1,8,1,8,1,9,1,9,1,9,1,9,1,9,1,9,1,9,3,9,94,8,
+		9,1,10,1,10,1,10,1,10,1,10,1,11,1,11,1,11,1,11,3,11,105,8,11,1,12,1,12,
+		1,12,1,13,1,13,1,13,1,14,1,14,1,14,1,14,1,15,1,15,1,15,0,0,16,0,2,4,6,
+		8,10,12,14,16,18,20,22,24,26,28,30,0,2,1,0,14,24,1,0,26,29,116,0,33,1,
+		0,0,0,2,44,1,0,0,0,4,47,1,0,0,0,6,68,1,0,0,0,8,70,1,0,0,0,10,73,1,0,0,
+		0,12,76,1,0,0,0,14,78,1,0,0,0,16,81,1,0,0,0,18,86,1,0,0,0,20,95,1,0,0,
+		0,22,104,1,0,0,0,24,106,1,0,0,0,26,109,1,0,0,0,28,112,1,0,0,0,30,116,1,
+		0,0,0,32,34,5,25,0,0,33,32,1,0,0,0,33,34,1,0,0,0,34,36,1,0,0,0,35,37,3,
+		4,2,0,36,35,1,0,0,0,36,37,1,0,0,0,37,38,1,0,0,0,38,39,5,0,0,1,39,1,1,0,
+		0,0,40,41,5,1,0,0,41,42,3,4,2,0,42,43,5,2,0,0,43,45,1,0,0,0,44,40,1,0,
+		0,0,44,45,1,0,0,0,45,3,1,0,0,0,46,48,3,6,3,0,47,46,1,0,0,0,48,49,1,0,0,
+		0,49,47,1,0,0,0,49,50,1,0,0,0,50,5,1,0,0,0,51,52,3,8,4,0,52,53,5,25,0,
+		0,53,69,1,0,0,0,54,55,3,10,5,0,55,56,5,25,0,0,56,69,1,0,0,0,57,58,3,12,
+		6,0,58,59,5,25,0,0,59,69,1,0,0,0,60,61,3,14,7,0,61,62,5,25,0,0,62,69,1,
+		0,0,0,63,64,3,16,8,0,64,65,5,25,0,0,65,69,1,0,0,0,66,69,3,18,9,0,67,69,
+		3,20,10,0,68,51,1,0,0,0,68,54,1,0,0,0,68,57,1,0,0,0,68,60,1,0,0,0,68,63,
+		1,0,0,0,68,66,1,0,0,0,68,67,1,0,0,0,69,7,1,0,0,0,70,71,5,3,0,0,71,72,3,
+		22,11,0,72,9,1,0,0,0,73,74,5,4,0,0,74,75,3,22,11,0,75,11,1,0,0,0,76,77,
+		5,5,0,0,77,13,1,0,0,0,78,79,5,6,0,0,79,80,3,22,11,0,80,15,1,0,0,0,81,82,
+		5,7,0,0,82,83,5,28,0,0,83,84,5,8,0,0,84,85,3,22,11,0,85,17,1,0,0,0,86,
+		87,5,9,0,0,87,88,3,22,11,0,88,89,5,25,0,0,89,93,3,2,1,0,90,91,5,10,0,0,
+		91,92,5,25,0,0,92,94,3,2,1,0,93,90,1,0,0,0,93,94,1,0,0,0,94,19,1,0,0,0,
+		95,96,5,11,0,0,96,97,3,22,11,0,97,98,5,25,0,0,98,99,3,2,1,0,99,21,1,0,
+		0,0,100,105,3,30,15,0,101,105,3,24,12,0,102,105,3,28,14,0,103,105,3,26,
+		13,0,104,100,1,0,0,0,104,101,1,0,0,0,104,102,1,0,0,0,104,103,1,0,0,0,105,
+		23,1,0,0,0,106,107,5,13,0,0,107,108,3,30,15,0,108,25,1,0,0,0,109,110,5,
+		12,0,0,110,111,3,30,15,0,111,27,1,0,0,0,112,113,3,30,15,0,113,114,7,0,
+		0,0,114,115,3,30,15,0,115,29,1,0,0,0,116,117,7,1,0,0,117,31,1,0,0,0,7,
+		33,36,44,49,68,93,104
 	};
 
 	public static readonly ATN _ATN =

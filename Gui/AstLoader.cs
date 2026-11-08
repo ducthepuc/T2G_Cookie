@@ -136,11 +136,7 @@ static class AstLoader
     static void AttachMouth(CBlock host, Body body, bool mouth2, Ctx ctx)
     {
         Block? head = BuildChain(body, ctx);
-        if (head == null)
-        {
-            ctx.Problem($"{host.Label} has an empty body");
-            return;
-        }
+        if (head == null) return; // an empty body is valid: nothing to attach
 
         bool ok = mouth2 ? host.AttachInside2(head) : host.AttachInside0(head);
         if (!ok)
@@ -168,11 +164,6 @@ static class AstLoader
                 }
             case Variable variable:
                 {
-                    // A source file naming a cell (`isThere wall`) rebuilds as the
-                    // Sensing cell block, not as a variable reference.
-                    if (VariableRegistry.CellKind(variable.variable) is { } cell)
-                        return Create(ctx, cell);
-
                     EnsureVariable(variable.variable, ctx);
                     var reference = (VariableBlock)Create(ctx, BlockKind.Variable);
                     reference.Name = variable.variable;
@@ -188,15 +179,7 @@ static class AstLoader
             case Not not:
                 return WithValue(Create(ctx, BlockKind.Not), 0, not.Value, ctx);
             case IsThere isThere:
-                {
-                    // isThere's argument is a cell kind, so a literal 0/1/2 in the
-                    // file rebuilds as the Sensing block for that cell.
-                    Block arg = isThere.Arg is Literal literal &&
-                                VariableRegistry.CellKindOfValue(literal.value) is { } cell
-                        ? Create(ctx, cell)
-                        : BuildValue(isThere.Arg, ctx);
-                    return Attach(Create(ctx, BlockKind.IsThere), 0, arg, ctx);
-                }
+                return WithValue(Create(ctx, BlockKind.IsThere), 0, isThere.Arg, ctx);
             default:
                 ctx.Problem($"don't know how to build the value '{value}'");
                 return Create(ctx, BlockKind.Number);
@@ -219,8 +202,7 @@ static class AstLoader
         _ => throw new InvalidOperationException($"unknown operator {operation}")
     };
 
-    /// <summary>Variables used by the file are created on the way in; the built-ins
-    /// are already registered and read-only.</summary>
+    /// <summary>Variables used by the file are created on the way in.</summary>
     static void EnsureVariable(string name, Ctx ctx)
     {
         if (name.Length == 0 || ctx.Ws.Registry.Contains(name)) return;

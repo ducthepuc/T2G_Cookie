@@ -9,7 +9,7 @@
 
   <!-- The host entry point builds the editor out of this assembly's internals. -->
   <ItemGroup>
-    <InternalsVisibleTo Include="Main" />
+    <InternalsVisibleTo Include="robot" />
   </ItemGroup>
 
   <!-- The self-test harness has its own entry point and its own project. -->

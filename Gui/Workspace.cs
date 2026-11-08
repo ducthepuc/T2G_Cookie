@@ -5,6 +5,15 @@ using T2G_Cookie.Shared.Values;
 
 namespace T2G_Cookie.Gui;
 
+/// <summary>A program run in progress: the workspace advances it once per frame. The
+/// host implements it, because Gui may not reference the Backend VM.</summary>
+interface IRunSession
+{
+    bool Done { get; }
+    void Tick();
+    void Abort();
+}
+
 enum SnapKind
 {
     Below,
@@ -109,6 +118,24 @@ public sealed class Workspace : Frame
     // its own, the map keeps the run's result until then.
     bool _running;
 
+    // The session Start launched, advanced from Update; a run in trace mode only
+    // moves on when a Next request is waiting.
+    IRunSession? _session;
+    bool _tracing;
+    bool _stepRequested;
+    int _speedIndex = 1;
+
+    // Until when the "too deep" hint shows: a drag near a refused connection renews it.
+    double _nestRefusedUntil;
+
+    static readonly (string Name, double Seconds)[] Speeds =
+    [
+        ("Slow", 0.6),
+        ("Normal", 0.25),
+        ("Fast", 0.06),
+        ("Turbo", 0.008),
+    ];
+
     internal VariableRegistry Registry => _registry;
     internal IReadOnlyList<Block> Roots => _roots;
     internal DropDown Menu => _drop;
@@ -134,17 +161,34 @@ public sealed class Workspace : Frame
     /// the button shows Stop and the next start needs that click first.</summary>
     internal bool Running => _running;
 
+    /// <summary>True while the program is still executing (not merely showing its
+    /// finished result): the code is frozen for that long.</summary>
+    internal bool RunActive => _session is { Done: false };
+
+    /// <summary>True when this run advances line by line on Next.</summary>
+    internal bool Tracing => _tracing;
+
+    /// <summary>How long one line (or one walked cell) stays on screen.</summary>
+    internal double StepDelaySeconds => Speeds[_speedIndex].Seconds;
+
     readonly StartButton _start;
     readonly SaveButton _save;
     readonly ResetButton _reset;
     readonly ResetMapButton _resetMap;
+    readonly BarButton _trace;
+    readonly BarButton _speed;
     readonly OutputField _output;
     readonly MapField _map;
+    readonly SensorField _sensor;
+    readonly TextPanel _source;
+    readonly TextPanel _variables;
     readonly RobotToggle _robotToggle;
     readonly RobotButtons _robotButtons;
     bool _overSave;
     bool _overReset;
     bool _overResetMap;
+    bool _overTrace;
+    bool _overSpeed;
     bool _overToggle;
     bool _overButtons;
 
@@ -167,6 +211,15 @@ public sealed class Workspace : Frame
 
     /// <summary>The 15x15 map panel under the output field; the host loads the map matrix into it.</summary>
     internal MapField MapPanel => _map;
+
+    /// <summary>The robot's sensor readout under the map.</summary>
+    internal SensorField Sensor => _sensor;
+
+    /// <summary>The live text view of the program.</summary>
+    internal TextPanel Source => _source;
+
+    /// <summary>The variable values of the current run.</summary>
+    internal TextPanel VariablesPanel => _variables;
 
     /// <summary>The "Control Robot" checkbox frame under the map panel.</summary>
     internal RobotToggle RobotToggle => _robotToggle;
@@ -208,6 +261,25 @@ public sealed class Workspace : Frame
             Pos.Top(_reset));
         AddChild(_resetMap);
 
+        // The run controls continue the bar: Trace turns into Next during a trace.
+        _trace = new BarButton(
+            () => Pos.Left(_resetMap)() - Theme.StartButtonW - Theme.ButtonGap,
+            Pos.Top(_resetMap),
+            Theme.StartButtonW,
+            () => _tracing && RunActive ? "Next" : "Trace",
+            () => _robotControl || (_running && !(_tracing && RunActive))
+                ? Theme.StartDisabled
+                : Theme.TraceButton);
+        AddChild(_trace);
+
+        _speed = new BarButton(
+            () => Pos.Left(_trace)() - Theme.SpeedButtonW - Theme.ButtonGap,
+            Pos.Top(_trace),
+            Theme.SpeedButtonW,
+            () => "Speed: " + Speeds[_speedIndex].Name,
+            () => Theme.SaveGray);
+        AddChild(_speed);
+
         // The print-output panel hangs under the whole bar (buttons + status line) and
         // shares the bar's right edge: its x resolves from Pos.Right(_start) minus the
         // panel's screen width, so the two stay flush through resizes.
@@ -226,13 +298,40 @@ public sealed class Workspace : Frame
             Theme.OutputWPercent);
         AddChild(_map);
 
-        // The robot-control stack hangs under the map: checkbox first, the button
-        // row under it, both sharing the map's width and left edge.
-        _robotToggle = new RobotToggle(
+        _sensor = new SensorField(
             () => Pos.Left(_map)(),
             () => Pos.Bottom(_map)() + Theme.RobotPanelGap,
             Theme.OutputWPercent,
-            state => _robotControl = state);
+            () => _map.Map);
+        AddChild(_sensor);
+
+        // A column left of the output: the program as text, the variables under it.
+        _source = new TextPanel(
+            () => Pos.Left(_output)() - Theme.RobotPanelGap - Dim.GetWSize(Theme.SourceWPercent),
+            Pos.Top(_output),
+            Theme.SourceWPercent, Theme.SourceHPercent,
+            "Source code", "Add a Start block", lineNumbers: true);
+        AddChild(_source);
+
+        _variables = new TextPanel(
+            Pos.Left(_source),
+            () => Pos.Bottom(_source)() + Theme.RobotPanelGap,
+            Theme.SourceWPercent, Theme.VariablesHPercent,
+            "Variables", "Values appear during a run", lineNumbers: false);
+        AddChild(_variables);
+
+        // The robot-control stack hangs under the sensor: checkbox first, the button
+        // row under it, both sharing the map's width and left edge. Taking control
+        // interrupts a program that is still running.
+        _robotToggle = new RobotToggle(
+            () => Pos.Left(_map)(),
+            () => Pos.Bottom(_sensor)() + Theme.RobotPanelGap,
+            Theme.OutputWPercent,
+            state =>
+            {
+                _robotControl = state;
+                if (state && RunActive) AbandonRun();
+            });
         AddChild(_robotToggle);
 
         _robotButtons = new RobotButtons(
@@ -352,6 +451,8 @@ public sealed class Workspace : Frame
         bool overSave = chromeBlocked && InsideRect(localMouse, _save.Bounds);
         bool overReset = chromeBlocked && InsideRect(localMouse, _reset.Bounds);
         bool overResetMap = chromeBlocked && InsideRect(localMouse, _resetMap.Bounds);
+        bool overTrace = chromeBlocked && InsideRect(localMouse, _trace.Bounds);
+        bool overSpeed = chromeBlocked && InsideRect(localMouse, _speed.Bounds);
         bool overToggle = chromeBlocked && InsideRect(localMouse, _robotToggle.Bounds);
         bool overButtons = chromeBlocked && InsideRect(localMouse, _robotButtons.Bounds);
 
@@ -381,6 +482,18 @@ public sealed class Workspace : Frame
             else _resetMap.OnUnhover();
             _overResetMap = overResetMap;
         }
+        if (overTrace != _overTrace)
+        {
+            if (overTrace) _trace.OnHover();
+            else _trace.OnUnhover();
+            _overTrace = overTrace;
+        }
+        if (overSpeed != _overSpeed)
+        {
+            if (overSpeed) _speed.OnHover();
+            else _speed.OnUnhover();
+            _overSpeed = overSpeed;
+        }
         if (overToggle != _overToggle)
         {
             if (overToggle) _robotToggle.OnHover();
@@ -400,6 +513,14 @@ public sealed class Workspace : Frame
         _start.HasErrors = _validation.Errors.Count > 0;
         _start.HasScript = _validation.Scripts.Length > 0;
 
+        // The text view follows every edit, incomplete programs included.
+        _source.Lines = _validation.Scripts.Length > 0
+            ? _validation.ToMineCode().Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0).ToArray()
+            : [];
+        _source.ActiveLine = _activeLine;
+
+        _session?.Tick();
+
         // The gold row under the print output tracks the map: the manual MINE button
         // and MachineSpirit's Mine block both end in MapHandler.Mine, so this is the
         // same count the VM's GoldMined reports.
@@ -411,6 +532,7 @@ public sealed class Workspace : Frame
         {
             while ((int)Raylib.GetCharPressed() is int ch and not 0)
                 _prompt.InputChar((char)ch);
+            if (Raylib.IsKeyPressed(KeyboardKey.KEY_BACKSPACE)) _prompt.Backspace();
             if (Raylib.IsKeyPressed(KeyboardKey.KEY_ENTER)) ConfirmPrompt();
             if (Raylib.IsKeyPressed(KeyboardKey.KEY_ESCAPE)) _prompt.Close();
             if (pressed && !InsideRect(localMouse, _prompt.LocalBounds)) _prompt.Close();
@@ -458,18 +580,33 @@ public sealed class Workspace : Frame
             Save();
             return;
         }
-        if (pressed && overReset)
+        if (pressed && overReset && !RunActive)
         {
             CommitEditing();
             ResetMined();
             return;
         }
-        if (pressed && overResetMap)
+        if (pressed && overResetMap && !RunActive)
         {
             CommitEditing();
             ResetMap();
             return;
         }
+        if (pressed && overTrace)
+        {
+            CommitEditing();
+            PressTrace();
+            return;
+        }
+        if (pressed && overSpeed)
+        {
+            CommitEditing();
+            _speedIndex = (_speedIndex + 1) % Speeds.Length;
+            return;
+        }
+        if (RunActive && _tracing &&
+            (Raylib.IsKeyPressed(KeyboardKey.KEY_SPACE) || Raylib.IsKeyPressed(KeyboardKey.KEY_RIGHT)))
+            _stepRequested = true;
 
         // 6. So do the robot-control panels: the click was already kept off the
         //    blocks by chromeBlocked, here it either flips the checkbox or moves the
@@ -484,6 +621,16 @@ public sealed class Workspace : Frame
         {
             CommitEditing();
             _robotButtons.Click(localMouse);
+            return;
+        }
+
+        HandleWheel(localMouse);
+
+        // The code is frozen while the program runs, and the panels sit above the
+        // blocks: neither lets a press reach a script.
+        if (RunActive || OverPanels(localMouse))
+        {
+            ResetHover();
             return;
         }
 
@@ -602,8 +749,13 @@ public sealed class Workspace : Frame
         // The map panel follows the output down the same stack, and the robot
         // controls hang under the map.
         _map.Draw(screenX, screenY);
+        _sensor.Draw(screenX, screenY);
+        _source.Draw(screenX, screenY);
+        _variables.Draw(screenX, screenY);
         _robotToggle.Draw(screenX, screenY);
         _robotButtons.Draw(screenX, screenY);
+        _speed.Draw(screenX, screenY);
+        _trace.Draw(screenX, screenY);
         _resetMap.Draw(screenX, screenY);
         _reset.Draw(screenX, screenY);
         _save.Draw(screenX, screenY);
@@ -723,14 +875,20 @@ public sealed class Workspace : Frame
         // to itself is exactly how the linked list used to end up with a cycle.
         HashSet<Block> dragBlocks = drag.CollectBlocks();
 
+        int dragLevels = drag.ControlLevels();
         SnapTarget? best = null;
         float bestDistance = Theme.SnapRadius;
 
         void Consider(SnapKind kind, Block target, Vector2 point, Vector2 from, float width,
-                      Slot? slot = null, int mouth = 0)
+                      Slot? slot = null, int mouth = 0, int enclosing = 0)
         {
             float d = Vector2.Distance(from, point);
             if (d >= bestDistance) return;
+            if (enclosing + dragLevels > Block.MaxControlLevels)
+            {
+                _nestRefusedUntil = Raylib.GetTime() + 0.15;
+                return;
+            }
             bestDistance = d;
             best = new SnapTarget(kind, target, point, Math.Max(width, drag.Width), slot, mouth);
         }
@@ -750,22 +908,26 @@ public sealed class Workspace : Frame
                 // bottom has to be able to continue b (a cap ends the script).
                 if (drag.HasPreviousConnection && b.HasNextConnection &&
                     (tail.HasNextConnection || b.Next == null))
-                    Consider(SnapKind.Below, b, b.NextConnection, dragTop, b.Width);
+                    Consider(SnapKind.Below, b, b.NextConnection, dragTop, b.Width,
+                        enclosing: b.EnclosingLevels());
 
                 // b's top has to sit on the dragged bottom. Guarded per case instead of
                 // the old blanket `break`, which also blocked the one case a hat needs:
                 // landing on top of an existing script.
                 if (drag.HasNextConnection && b.HasPreviousConnection)
-                    Consider(SnapKind.Above, b, b.PreviousConnection, dragBottom, b.Width);
+                    Consider(SnapKind.Above, b, b.PreviousConnection, dragBottom, b.Width,
+                        enclosing: b.EnclosingLevels());
 
                 // The dragged top drops into a mouth of a C-block.
                 if (drag.HasPreviousConnection && b is CBlock c)
                 {
                     if (tail.HasNextConnection || c.Inner == null)
-                        Consider(SnapKind.Inside, c, c.InnerConnection, dragTop, c.Width - Theme.Indent, null, 0);
+                        Consider(SnapKind.Inside, c, c.InnerConnection, dragTop, c.Width - Theme.Indent, null, 0,
+                            c.EnclosingLevels() + 1);
 
                     if (c.HasElse && (tail.HasNextConnection || c.Inner2 == null))
-                        Consider(SnapKind.Inside, c, c.Inner2Connection, dragTop, c.Width - Theme.Indent, null, 1);
+                        Consider(SnapKind.Inside, c, c.Inner2Connection, dragTop, c.Width - Theme.Indent, null, 1,
+                            c.EnclosingLevels() + 1);
                 }
 
                 // A reporter drops into an empty value field of a block outside the drag.
@@ -774,6 +936,7 @@ public sealed class Workspace : Frame
                     foreach (Slot slot in b.Slots)
                     {
                         if (slot.Kind != SlotKind.Value || slot.Content != null) continue;
+                        if (!b.AcceptsValue(drag)) continue;
                         Vector2 center = new(slot.Bounds.X + slot.Bounds.width / 2f,
                                              slot.Bounds.Y + slot.Bounds.height / 2f);
                         Consider(SnapKind.IntoSlot, b, center, dragCenter, slot.Bounds.width, slot, 0);
@@ -819,6 +982,20 @@ public sealed class Workspace : Frame
                     break;
 
                 case SnapKind.Above:
+                    // A block that can sit in a chain takes the target's place: the
+                    // target moves down one and stays in its script or C-block mouth.
+                    if (drag.HasPreviousConnection && snap.Target.Previous is { } above)
+                    {
+                        if (above.AttachBelow(drag)) return;
+                        break;
+                    }
+                    if (drag.HasPreviousConnection && snap.Target.Container is { } holder)
+                    {
+                        bool firstMouth = ReferenceEquals(holder.Inner, snap.Target);
+                        if (firstMouth ? holder.AttachInside0(drag) : holder.AttachInside2(drag)) return;
+                        break;
+                    }
+
                     // Cut the target out of whatever held it before re-homing it. The old
                     // code only unlinked it from _roots, so a block lifted out of a
                     // C-block mouth kept its Container and ended up living in two chains
@@ -843,10 +1020,10 @@ public sealed class Workspace : Frame
     // ------------------------------------------------------------ start button --
 
     /// <summary>Converts the workspace and prints the AST; with a host runner wired
-    /// (Main) the program then executes on the Backend VM. A run that can actually
-    /// start opens the session: the map is checkpointed for the eventual Stop and the
-    /// button becomes the red Stop until that click.</summary>
-    internal AstResult RunStart()
+    /// (Main) the program then executes on the Backend VM. A run always starts from the
+    /// map as it was loaded; it opens a session and the button becomes the red Stop
+    /// until that click.</summary>
+    internal AstResult RunStart(bool trace = false)
     {
         _validation = AstConverter.Convert(this);
         Console.WriteLine(_validation.Dump());
@@ -856,39 +1033,71 @@ public sealed class Workspace : Frame
                       _map.Map?.IdentifyRobot(out _) != null;
         if (canRun && RunProgram != null)
         {
-            _map.Map!.Checkpoint(); // pre-start state the Stop click restores
+            _map.Map!.ResetMap();
+            _map.Map.Checkpoint(); // what the Stop click goes back to
+            _output.Clear();
+            _variables.Lines = [];
             _running = true;
+            _tracing = trace;
+            _stepRequested = false;
             RunProgram.Invoke(_validation);
         }
         return _validation;
     }
 
-    /// <summary>The red Stop: the run session closes, the map goes back to the state
-    /// it had when Start was clicked (robot cell and orientation, mined gold), the
-    /// running-line highlight clears, the output window empties, and the button
-    /// becomes Start again.</summary>
-    internal void StopRun()
+    /// <summary>Hands over the session the host created; null means it could not
+    /// start, which closes the run again.</summary>
+    internal void AttachSession(IRunSession? session)
     {
-        _map.Map?.RestoreCheckpoint();
-        _running = false;
-        _activeLine = null;
-        _output.Lines.Clear(); // the finished run's prints leave with the session
+        if (session == null) StopRun();
+        _session = session;
     }
 
-    /// <summary>True when the frame's fresh input carries a click on the Start/Stop
-    /// button. A run in flight polls this after presenting each step - the app loop
-    /// is suspended inside RunCode, so this is how the Stop reaches the run.</summary>
-    internal bool StopRequested()
+    /// <summary>The Trace button: starts a traced run, or asks for the next line.</summary>
+    internal void PressTrace()
     {
-        if (!Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT)) return false;
-        Vector2 local = Raylib.GetMousePosition() - new Vector2(_screenX, _screenY);
-        return InsideRect(local, _start.Bounds);
+        if (_robotControl) return;
+        if (!_running) RunStart(trace: true);
+        else if (RunActive && _tracing) _stepRequested = true;
+    }
+
+    /// <summary>Consumes a waiting Next request; the session polls this.</summary>
+    internal bool TakeStepRequest()
+    {
+        bool requested = _stepRequested;
+        _stepRequested = false;
+        return requested;
+    }
+
+    /// <summary>The red Stop: the run session closes, the map goes back to the state
+    /// the run started from, the highlight clears, the output window empties, and the
+    /// button becomes Start again.</summary>
+    internal void StopRun()
+    {
+        _session?.Abort();
+        _session = null;
+        _map.Map?.RestoreCheckpoint();
+        _running = false;
+        _tracing = false;
+        _activeLine = null;
+        _output.Clear(); // the finished run's prints leave with the session
+        _variables.Lines = [];
+    }
+
+    /// <summary>Manual control took over: the program ends where it is, and the robot,
+    /// map and output stay as they are.</summary>
+    void AbandonRun()
+    {
+        _session?.Abort();
+        _session = null;
+        _running = false;
+        _tracing = false;
+        _activeLine = null;
     }
 
     /// <summary>
-    /// The VM's MachineSpirit state pushed onto the map panel after every
-    /// instruction - the marker moves with the spirit, and the gold row under the
-    /// output follows the mines the run makes along the way.
+    /// The VM's MachineSpirit state pushed onto the map panel: the marker moves with
+    /// the spirit, and the gold row under the output follows the mines along the way.
     /// </summary>
     internal void SyncRunState(Vector2Int position, Direction facing)
     {
@@ -897,31 +1106,19 @@ public sealed class Workspace : Frame
         _output.TotalGold = _map.Map?.TotalGold ?? 0;
     }
 
-    /// <summary>Sets (or with null clears) the running-line highlight; the VM
-    /// handler calls this with each instruction's metadata line.</summary>
+    /// <summary>Sets (or with null clears) the running-line highlight.</summary>
     internal void HighlightLine(int? line) => _activeLine = line;
 
-    /// <summary>Routes a resolved print value into the output field; the VM runner
-    /// calls this when the instruction it just executed is a print. When the printed
-    /// statement is a plain variable, its name goes with the value ("n = 5"), so the
-    /// output says which variable the number came from.</summary>
-    internal void AppendPrint(string text, int line)
-    {
-        string? variable = PrintedVariable(line);
-        _output.Append(variable != null ? $"{variable} = {text}" : text);
-    }
+    /// <summary>Routes a printed value into the output field.</summary>
+    internal void AppendPrint(string text) => _output.Append(text);
 
-    /// <summary>The variable printed on that generated source line, or null when the
-    /// print statement held something else - a literal, an operator, a cell.</summary>
-    string? PrintedVariable(int line)
-    {
-        foreach (Block root in _roots)
-            foreach (Block b in root.Flatten())
-                if (b.Kind == BlockKind.Print && b.RunLine == line &&
-                    b.Slots.Count > 0 && b.Slots[0].Content is VariableBlock variable)
-                    return variable.Name;
-        return null;
-    }
+    /// <summary>Shows a runtime error in the output field; <paramref name="line"/> is
+    /// null when the error does not belong to one line.</summary>
+    internal void AppendError(string code, int? line) =>
+        _output.AppendError(line is { } n ? $"line {n}: {code}" : code);
+
+    /// <summary>Replaces the variable values shown during a run.</summary>
+    internal void ShowVariables(IReadOnlyList<string> lines) => _variables.Lines = lines;
 
     /// <summary>Loads the map the host parsed from the input file into the map
     /// panel; null (no file) leaves the panel showing its empty state.</summary>
@@ -944,6 +1141,11 @@ public sealed class Workspace : Frame
             Console.WriteLine("save: nothing to save (add a Start block)");
             return false;
         }
+        if (result.Errors.Count > 0)
+        {
+            Console.WriteLine("save: fix the problems first");
+            return false;
+        }
         if (SaveScript == null)
         {
             Console.WriteLine("save: no input file to save to");
@@ -962,7 +1164,17 @@ public sealed class Workspace : Frame
     {
         string text;
         Color color;
-        if (_validation.Errors.Count > 0)
+        if (RunActive)
+        {
+            text = _tracing ? "paused: Next or Space" : "running...";
+            color = Theme.StartGreen;
+        }
+        else if (_running)
+        {
+            text = "finished: Stop to reset";
+            color = Theme.TextDark;
+        }
+        else if (_validation.Errors.Count > 0)
         {
             int n = _validation.Errors.Count;
             text = n == 1 ? "1 problem" : $"{n} problems";
@@ -1009,6 +1221,16 @@ public sealed class Workspace : Frame
 
     void DrawTooltip(int screenX, int screenY)
     {
+        if (Raylib.GetTime() < _nestRefusedUntil)
+        {
+            const string hint = "Control blocks can only nest 3 levels deep";
+            int hintX = (int)Raylib.GetMousePosition().X + 14;
+            int hintY = (int)Raylib.GetMousePosition().Y + 14;
+            Raylib.DrawRectangle(hintX, hintY, Raylib.MeasureText(hint, 14) + 16, 24, Theme.Badge);
+            Raylib.DrawText(hint, hintX + 8, hintY + 5, 14, Raylib.WHITE);
+            return;
+        }
+
         if (_validation.Errors.Count == 0) return;
 
         Vector2 local = Raylib.GetMousePosition() - new Vector2(screenX, screenY);
@@ -1037,7 +1259,7 @@ public sealed class Workspace : Frame
 
         Rectangle anchor = nameSlot?.Bounds ?? owner.Bounds;
         _drop.Open(anchor,
-            _registry.Names.Select(n => (n, _registry.IsBuiltin(n))),
+            _registry.Names,
             nameSlot?.SelectedName ?? (owner as VariableBlock)?.Name,
             Width, Height);
     }
@@ -1084,6 +1306,39 @@ public sealed class Workspace : Frame
     }
 
     // ------------------------------------------------------------------ helpers --
+
+    /// <summary>True over a panel that is drawn on top of the scripts.</summary>
+    bool OverPanels(Vector2 p) =>
+        InsideRect(p, _output.Bounds) || InsideRect(p, _map.Bounds) || InsideRect(p, _sensor.Bounds) ||
+        InsideRect(p, _source.Bounds) || InsideRect(p, _variables.Bounds) ||
+        InsideRect(p, _robotToggle.Bounds) || InsideRect(p, _robotButtons.Bounds);
+
+    /// <summary>The mouse wheel scrolls the panel under it, or else moves the scripts
+    /// so a program taller than the window stays reachable.</summary>
+    void HandleWheel(Vector2 localMouse)
+    {
+        float wheel = Raylib.GetMouseWheelMove();
+        if (wheel == 0f) return;
+        if (localMouse.X < 0 || localMouse.X >= Width || localMouse.Y < 0 || localMouse.Y >= Height) return;
+
+        if (InsideRect(localMouse, _source.Bounds))
+        {
+            _source.Scroll(wheel);
+            return;
+        }
+        if (_roots.Count == 0 || OverPanels(localMouse)) return;
+
+        int delta = (int)(wheel * 30f);
+        int top = _roots.Min(r => r.Y);
+        int bottom = _roots.Max(r => r.Y + r.ChainHeight());
+        delta = delta > 0
+            ? Math.Min(delta, Math.Max(0, 8 - top))
+            : Math.Max(delta, -Math.Max(0, bottom - (Height - 8)));
+        if (delta == 0) return;
+
+        foreach (Block root in _roots)
+            root.Y += delta;
+    }
 
     static Slot? SlotAt(Block b, Vector2 p)
     {

@@ -8,18 +8,15 @@ namespace T2G_Cookie.Gui;
 /// <summary>
 /// The map panel under the print-output field. It shares the output's width - the
 /// x resolver anchors to the output's left edge and the size is the same Dim
-/// percent - and stays square, so the 15x15 grid is one uniform tile size. The
-/// host loads the <see cref="MapHandler"/> the input file produced with
-/// <see cref="SetMap"/>; every cell is drawn from the handler's parsed elements:
-/// a small grey circle for an empty cell, a small yellow square for gold, a red
-/// square filling the whole cell for a wall, and a blue triangle on the robot's
-/// cell rotated to its starting direction.
+/// percent - and stays square; tiles scale so the map fills it. The host loads the
+/// <see cref="MapHandler"/> the input file produced with <see cref="SetMap"/>; every
+/// cell is drawn from the handler's parsed elements: a small grey circle for an empty
+/// cell, a small yellow square for gold, a red square filling the whole cell for a
+/// wall, and a blue triangle on the robot's cell rotated to its direction. Cells the
+/// robot has not explored yet sit under a grey veil.
 /// </summary>
 sealed class MapField : Frame
 {
-    /// <summary>The grid is always 15x15 - the biggest map the game accepts.</summary>
-    public const int Cells = 15;
-
     MapHandler? _map;
 
     public MapField(Func<int> x, Func<int> y, int wPercent)
@@ -37,8 +34,7 @@ sealed class MapField : Frame
 
     public override void Draw(int offsetX, int offsetY)
     {
-        // The width scales with the screen through Dim (the output's percent); the
-        // panel is square, so Cells rows of Width/Cells land on square tiles.
+        // The width scales with the screen through Dim (the output's percent).
         Width = Dim.GetWSize(WPercent);
         Height = Width;
         (int drawX, int drawY) = ResolvePosition(offsetX, offsetY);
@@ -60,25 +56,21 @@ sealed class MapField : Frame
             return;
         }
 
-        int tile = Math.Max(1, Math.Min(Width, Height) / Cells);
-        int grid = tile * Cells;
-        int originX = drawX + (Width - grid) / 2;
-        int originY = drawY + (Height - grid) / 2;
+        int tile = Math.Max(1, Math.Min(Width / _map.Cols, Height / _map.Rows));
+        int gridW = tile * _map.Cols;
+        int gridH = tile * _map.Rows;
+        int originX = drawX + (Width - gridW) / 2;
+        int originY = drawY + (Height - gridH) / 2;
 
-        for (int i = 0; i <= Cells; i++)
-        {
-            Raylib.DrawLine(originX + i * tile, originY,
-                originX + i * tile, originY + grid, Theme.MapGridLine);
-            Raylib.DrawLine(originX, originY + i * tile,
-                originX + grid, originY + i * tile, Theme.MapGridLine);
-        }
+        for (int i = 0; i <= _map.Cols; i++)
+            Raylib.DrawLine(originX + i * tile, originY, originX + i * tile, originY + gridH, Theme.MapGridLine);
+        for (int i = 0; i <= _map.Rows; i++)
+            Raylib.DrawLine(originX, originY + i * tile, originX + gridW, originY + i * tile, Theme.MapGridLine);
 
-        // Cells past the map stay plain grid: the handler knows its own rows/columns,
-        // and a map larger than the grid can't happen (Main rejects it before launch).
         Vector2Int? robot = _map.IdentifyRobot(out Direction? facing);
-        for (int row = 0; row < _map.Rows && row < Cells; row++)
+        for (int row = 0; row < _map.Rows; row++)
         {
-            for (int col = 0; col < _map.Cols && col < Cells; col++)
+            for (int col = 0; col < _map.Cols; col++)
             {
                 int x = originX + col * tile;
                 int y = originY + row * tile;
@@ -86,6 +78,10 @@ sealed class MapField : Frame
                 MapHandler.MapElement element = _map.ElementAt(row, col);
                 bool robotHere = robot is { } position && position.X == col && position.Y == row;
                 bool mined = _map.IsMined(row, col);
+                bool explored = robotHere || _map.IsExplored(row, col);
+
+                if (explored)
+                    Raylib.DrawRectangle(x + 1, y + 1, tile - 1, tile - 1, Theme.MapExplored);
 
                 if (!robotHere)
                 {
@@ -105,6 +101,9 @@ sealed class MapField : Frame
 
                 if (robotHere)
                     DrawRobot(x + tile / 2, y + tile / 2, tile, facing!.Value);
+
+                if (!explored)
+                    Raylib.DrawRectangle(x + 1, y + 1, tile - 1, tile - 1, Theme.MapFog);
             }
         }
     }
