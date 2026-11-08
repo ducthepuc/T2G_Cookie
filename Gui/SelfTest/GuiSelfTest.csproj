@@ -19,6 +19,9 @@
 
   <ItemGroup>
     <Compile Include="..\*.cs" Exclude="..\App.cs" />
+    <!-- The VM wiring lives in Main (Gui may not reference Backend); compiling the
+         same source here lets the tests drive the real runner end to end. -->
+    <Compile Include="..\..\Main\Runner.cs" />
   </ItemGroup>
 
   <ItemGroup>

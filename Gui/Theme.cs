@@ -101,6 +101,9 @@ static class Theme
     public static readonly Color MapMined = Rgb(76, 175, 80);
     public static readonly Color MapRobot = Rgb(52, 120, 246);
 
+    // the outline around the block segment the VM is currently running
+    public static readonly Color RunHighlight = Rgb(255, 193, 7);
+
     public static Color Rgb(int r, int g, int b) => new Color((byte)r, (byte)g, (byte)b, (byte)255);
 
     /// <summary>Mix a colour toward white; used for hover states so blocks keep their identity.</summary>

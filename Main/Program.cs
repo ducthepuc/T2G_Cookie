@@ -79,6 +79,11 @@ internal class Program
         app.Toolbox = toolbox;
         app.Workspace = workspace;
 
+        // Start hands the converted script to the Backend VM runner: every
+        // instruction moves the map robot and the running-line highlight, then
+        // presents the step (Runner.PresentStep drives Raylib mid-frame).
+        workspace.RunProgram = result => Runner.Run(workspace, result, Runner.PresentStep);
+
         // The window is open now, so the loader can measure text while it builds blocks.
         if (input != null)
         {

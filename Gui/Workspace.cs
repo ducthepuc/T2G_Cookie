@@ -1,6 +1,7 @@
 using System.Numerics;
 using Raylib_CsLo;
 using T2G_Cookie.Shared;
+using T2G_Cookie.Shared.Values;
 
 namespace T2G_Cookie.Gui;
 
@@ -99,6 +100,15 @@ public sealed class Workspace : Frame
     double _flashUntil;
     bool _overStart;
 
+    // The line the VM is currently running, or null when nothing runs; the block
+    // owning the line draws its gold highlight from it (see Block.DrawRunHighlight).
+    int? _activeLine;
+
+    // A run session: set when Start launches the program (the button turns into the
+    // red Stop), cleared only when Stop is clicked - even if the program finished on
+    // its own, the map keeps the run's result until then.
+    bool _running;
+
     internal VariableRegistry Registry => _registry;
     internal IReadOnlyList<Block> Roots => _roots;
     internal DropDown Menu => _drop;
@@ -110,15 +120,31 @@ public sealed class Workspace : Frame
     /// when one was given; null means there is no file to save to.</summary>
     internal Action<string>? SaveScript { get; set; }
 
+    /// <summary>
+    /// The host's "run this program" hook: Start hands the freshly converted script
+    /// to it (Main wires it to the Backend VM runner). Null keeps the old behavior of
+    /// only dumping the AST - that is what the self-test relies on.
+    /// </summary>
+    internal Action<AstResult>? RunProgram { get; set; }
+
+    /// <summary>The source line the VM is executing right now, null when idle.</summary>
+    internal int? ActiveLine => _activeLine;
+
+    /// <summary>True while a run session is open (Start was clicked, Stop was not):
+    /// the button shows Stop and the next start needs that click first.</summary>
+    internal bool Running => _running;
+
     readonly StartButton _start;
     readonly SaveButton _save;
     readonly ResetButton _reset;
+    readonly ResetMapButton _resetMap;
     readonly OutputField _output;
     readonly MapField _map;
     readonly RobotToggle _robotToggle;
     readonly RobotButtons _robotButtons;
     bool _overSave;
     bool _overReset;
+    bool _overResetMap;
     bool _overToggle;
     bool _overButtons;
 
@@ -132,6 +158,9 @@ public sealed class Workspace : Frame
 
     /// <summary>The yellow mined-gold reset button left of Save.</summary>
     internal ResetButton ResetButton => _reset;
+
+    /// <summary>The blue full-reset button left of Reset Gold (for layout tests).</summary>
+    internal ResetMapButton ResetMapButton => _resetMap;
 
     /// <summary>The 20% x 10% field under the bar buttons where Print output will show.</summary>
     internal OutputField Output => _output;
@@ -171,6 +200,13 @@ public sealed class Workspace : Frame
             () => Pos.Left(_save)() - Theme.ResetButtonW - Theme.ButtonGap,
             Pos.Top(_save));
         AddChild(_reset);
+
+        // Reset Map sits left of Reset Gold in its own blue: the full reset (terrain,
+        // mined gold, and the robot) is a different action from the gold-only one.
+        _resetMap = new ResetMapButton(
+            () => Pos.Left(_reset)() - Theme.ResetButtonW - Theme.ButtonGap,
+            Pos.Top(_reset));
+        AddChild(_resetMap);
 
         // The print-output panel hangs under the whole bar (buttons + status line) and
         // shares the bar's right edge: its x resolves from Pos.Right(_start) minus the
@@ -307,11 +343,15 @@ public sealed class Workspace : Frame
         bool pressed = Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT);
         bool chromeBlocked = _drag == null && !_prompt.IsOpen && !_drop.IsOpen;
         // Manual control is decided by the checkbox alone, so Start's state gates its
-        // own hover and click in the same frame the box changes.
+        // own hover and click in the same frame the box changes. While a session is
+        // open the button is Stop, which stays clickable even when control greys Start.
         _start.Disabled = _robotControl;
-        bool overStart = chromeBlocked && !_start.Disabled && InsideRect(localMouse, _start.Bounds);
+        _start.IsStop = _running;
+        bool overStart = chromeBlocked && (!_start.Disabled || _running) &&
+                         InsideRect(localMouse, _start.Bounds);
         bool overSave = chromeBlocked && InsideRect(localMouse, _save.Bounds);
         bool overReset = chromeBlocked && InsideRect(localMouse, _reset.Bounds);
+        bool overResetMap = chromeBlocked && InsideRect(localMouse, _resetMap.Bounds);
         bool overToggle = chromeBlocked && InsideRect(localMouse, _robotToggle.Bounds);
         bool overButtons = chromeBlocked && InsideRect(localMouse, _robotButtons.Bounds);
 
@@ -334,6 +374,12 @@ public sealed class Workspace : Frame
             if (overReset) _reset.OnHover();
             else _reset.OnUnhover();
             _overReset = overReset;
+        }
+        if (overResetMap != _overResetMap)
+        {
+            if (overResetMap) _resetMap.OnHover();
+            else _resetMap.OnUnhover();
+            _overResetMap = overResetMap;
         }
         if (overToggle != _overToggle)
         {
@@ -402,7 +448,8 @@ public sealed class Workspace : Frame
         if (pressed && overStart)
         {
             CommitEditing();
-            RunStart();
+            if (_running) StopRun(); // the red face: close the session, map back
+            else RunStart();
             return;
         }
         if (pressed && overSave)
@@ -415,6 +462,12 @@ public sealed class Workspace : Frame
         {
             CommitEditing();
             ResetMined();
+            return;
+        }
+        if (pressed && overResetMap)
+        {
+            CommitEditing();
+            ResetMap();
             return;
         }
 
@@ -551,6 +604,7 @@ public sealed class Workspace : Frame
         _map.Draw(screenX, screenY);
         _robotToggle.Draw(screenX, screenY);
         _robotButtons.Draw(screenX, screenY);
+        _resetMap.Draw(screenX, screenY);
         _reset.Draw(screenX, screenY);
         _save.Draw(screenX, screenY);
         _start.Draw(screenX, screenY);
@@ -788,13 +842,85 @@ public sealed class Workspace : Frame
 
     // ------------------------------------------------------------ start button --
 
-    /// <summary>Converts the workspace and prints the AST; execution comes later.</summary>
+    /// <summary>Converts the workspace and prints the AST; with a host runner wired
+    /// (Main) the program then executes on the Backend VM. A run that can actually
+    /// start opens the session: the map is checkpointed for the eventual Stop and the
+    /// button becomes the red Stop until that click.</summary>
     internal AstResult RunStart()
     {
         _validation = AstConverter.Convert(this);
         Console.WriteLine(_validation.Dump());
         _flashUntil = Raylib.GetTime() + 1.5;
+
+        bool canRun = _validation.Errors.Count == 0 && _validation.Scripts.Length > 0 &&
+                      _map.Map?.IdentifyRobot(out _) != null;
+        if (canRun && RunProgram != null)
+        {
+            _map.Map!.Checkpoint(); // pre-start state the Stop click restores
+            _running = true;
+            RunProgram.Invoke(_validation);
+        }
         return _validation;
+    }
+
+    /// <summary>The red Stop: the run session closes, the map goes back to the state
+    /// it had when Start was clicked (robot cell and orientation, mined gold), the
+    /// running-line highlight clears, the output window empties, and the button
+    /// becomes Start again.</summary>
+    internal void StopRun()
+    {
+        _map.Map?.RestoreCheckpoint();
+        _running = false;
+        _activeLine = null;
+        _output.Lines.Clear(); // the finished run's prints leave with the session
+    }
+
+    /// <summary>True when the frame's fresh input carries a click on the Start/Stop
+    /// button. A run in flight polls this after presenting each step - the app loop
+    /// is suspended inside RunCode, so this is how the Stop reaches the run.</summary>
+    internal bool StopRequested()
+    {
+        if (!Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT)) return false;
+        Vector2 local = Raylib.GetMousePosition() - new Vector2(_screenX, _screenY);
+        return InsideRect(local, _start.Bounds);
+    }
+
+    /// <summary>
+    /// The VM's MachineSpirit state pushed onto the map panel after every
+    /// instruction - the marker moves with the spirit, and the gold row under the
+    /// output follows the mines the run makes along the way.
+    /// </summary>
+    internal void SyncRunState(Vector2Int position, Direction facing)
+    {
+        _map.Map?.PlaceRobot(position, facing);
+        _output.GoldMined = _map.Map?.GoldMined ?? 0;
+        _output.TotalGold = _map.Map?.TotalGold ?? 0;
+    }
+
+    /// <summary>Sets (or with null clears) the running-line highlight; the VM
+    /// handler calls this with each instruction's metadata line.</summary>
+    internal void HighlightLine(int? line) => _activeLine = line;
+
+    /// <summary>Routes a resolved print value into the output field; the VM runner
+    /// calls this when the instruction it just executed is a print. When the printed
+    /// statement is a plain variable, its name goes with the value ("n = 5"), so the
+    /// output says which variable the number came from.</summary>
+    internal void AppendPrint(string text, int line)
+    {
+        string? variable = PrintedVariable(line);
+        _output.Append(variable != null ? $"{variable} = {text}" : text);
+    }
+
+    /// <summary>The variable printed on that generated source line, or null when the
+    /// print statement held something else - a literal, an operator, a cell.</summary>
+    string? PrintedVariable(int line)
+    {
+        foreach (Block root in _roots)
+            foreach (Block b in root.Flatten())
+                if (b.Kind == BlockKind.Print && b.RunLine == line &&
+                    b.Slots.Count > 0 && b.Slots[0].Content is VariableBlock variable)
+                    return variable.Name;
+        return null;
     }
 
     /// <summary>Loads the map the host parsed from the input file into the map
@@ -803,6 +929,10 @@ public sealed class Workspace : Frame
 
     /// <summary>Puts every mined gold cell back; a no-op without a map or mines.</summary>
     internal void ResetMined() => _map.Map?.ResetMined();
+
+    /// <summary>The full reset: terrain, mined gold, and the robot back to the state
+    /// the map loaded in; a no-op without a map.</summary>
+    internal void ResetMap() => _map.Map?.ResetMap();
 
     /// <summary>Converts the workspace and hands the rendered source to the save
     /// handler; false when there is no script or no input file to write to.</summary>
@@ -1014,6 +1144,10 @@ sealed class StartButton : Element, IInteractable
     /// clickable (the workspace keeps it out of the hover and the click).</summary>
     public bool Disabled { get; set; }
 
+    /// <summary>True while the run session is open: the button draws as the red Stop
+    /// and the workspace routes its click to closing the session instead of starting.</summary>
+    public bool IsStop { get; set; }
+
     public bool IsHovered { get; set; }
     public bool IsActivated { get; set; }
 
@@ -1032,7 +1166,10 @@ sealed class StartButton : Element, IInteractable
         int y = Y + offsetY;
         var screenBounds = new Rectangle(x, y, Width, Height);
 
-        Color color = Disabled ? Theme.StartDisabled
+        // The Stop face wins over everything: the session is open no matter what the
+        // validator or robot control says - its click must always be reachable.
+        Color color = IsStop ? Theme.Badge
+            : Disabled ? Theme.StartDisabled
             : HasErrors ? Theme.StartWarn
             : HasScript ? Theme.StartGreen
             : Theme.StartDisabled;
@@ -1042,18 +1179,24 @@ sealed class StartButton : Element, IInteractable
 
         Raylib.DrawRectangleRounded(screenBounds, 0.45f, 8, color);
 
-        Color textColor = !Disabled && (HasScript || HasErrors) ? Raylib.WHITE : Theme.TextDark;
+        Color textColor = IsStop || (!Disabled && (HasScript || HasErrors))
+            ? Raylib.WHITE : Theme.TextDark;
+        string label = IsStop ? "Stop" : "Start";
+        int glyphW = IsStop ? 10 : 8;
         int centerY = (int)(y + Height / 2f);
-        int textW = Raylib.MeasureText("Start", 14);
-        int contentW = 8 + 4 + textW;
+        int textW = Raylib.MeasureText(label, 14);
+        int contentW = glyphW + 4 + textW;
         int contentX = x + (Width - contentW) / 2;
 
-        Raylib.DrawTriangle(
-            new Vector2(contentX, centerY - 5),
-            new Vector2(contentX, centerY + 5),
-            new Vector2(contentX + 8, centerY),
-            textColor);
-        Raylib.DrawText("Start", contentX + 12, centerY - 7, 14, textColor);
+        if (IsStop)
+            Raylib.DrawRectangle(contentX, centerY - 5, glyphW, 10, textColor);
+        else
+            Raylib.DrawTriangle(
+                new Vector2(contentX, centerY - 5),
+                new Vector2(contentX, centerY + 5),
+                new Vector2(contentX + glyphW, centerY),
+                textColor);
+        Raylib.DrawText(label, contentX + glyphW + 4, centerY - 7, 14, textColor);
     }
 }
 
@@ -1142,5 +1285,50 @@ sealed class ResetButton : Element, IInteractable
 
         int textW = Raylib.MeasureText("Reset Gold", 14);
         Raylib.DrawText("Reset Gold", x + (Width - textW) / 2, y + (Height - 14) / 2, 14, Theme.TextDark);
+    }
+}
+
+/// <summary>The blue "Reset Map" button left of Reset Gold: puts the whole grid back
+/// to the state the map loaded in - terrain, mined gold, and the robot's position and
+/// orientation. It reports no state - hover and press only lighten/darken it like the
+/// other bar buttons do.</summary>
+sealed class ResetMapButton : Element, IInteractable
+{
+    public override int Width { get; set; }
+    public override int Height { get; set; }
+    public override int WPercent { get; set; }
+    public override int HPercent { get; set; }
+
+    public bool IsHovered { get; set; }
+    public bool IsActivated { get; set; }
+
+    public Rectangle Bounds => new Rectangle(X, Y, Width, Height);
+
+    public ResetMapButton(Func<int> x, Func<int> y) : base(x, y)
+    {
+        Width = Theme.ResetButtonW;
+        Height = Theme.SaveButtonH;
+    }
+
+    public override void Update(int offsetX, int offsetY) { }
+
+    public void OnHover() { IsHovered = true; Raylib.SetMouseCursor(MouseCursor.MOUSE_CURSOR_POINTING_HAND); }
+    public void OnUnhover() { IsHovered = false; Raylib.SetMouseCursor(MouseCursor.MOUSE_CURSOR_ARROW); }
+    public void OnActivated() { IsActivated = true; }
+    public void OnDrag(Vector2 delta) { }
+
+    public override void Draw(int offsetX, int offsetY)
+    {
+        int x = X + offsetX;
+        int y = Y + offsetY;
+        Color color = Theme.MapRobot;
+        if (IsHovered) color = Theme.Lighten(color, 0.14f);
+        if (IsHovered && Raylib.IsMouseButtonDown(MouseButton.MOUSE_BUTTON_LEFT))
+            color = Theme.Darken(color, 0.1f);
+
+        Raylib.DrawRectangleRounded(new Rectangle(x, y, Width, Height), 0.45f, 8, color);
+
+        int textW = Raylib.MeasureText("Reset Map", 14);
+        Raylib.DrawText("Reset Map", x + (Width - textW) / 2, y + (Height - 14) / 2, 14, Raylib.WHITE);
     }
 }

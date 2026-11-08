@@ -2,20 +2,12 @@
 .....@.........
 .#############.
 .......@...>...
-print 67
-set arany to isThere 2
-print arany
-set count to 0
-set fal to isThere 1
-set megy to not fal
-while megy
-    set arany to isThere 2
-    if arany
-        step forward 1
-        mine here
-        set count to count + 1
-    else
-        step forward 1
-        set fal to isThere 1
-        set megy to not fal
-print count
+turn by 2
+step forward 4
+mine here
+step forward 7
+turn by 3
+step forward 2
+turn by 3
+step forward 5
+mine here

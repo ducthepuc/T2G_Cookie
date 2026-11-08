@@ -71,6 +71,15 @@ abstract class Block : Element, IInteractable
     public bool IsHovered { get; set; }
     public bool IsActivated { get; set; }
 
+    /// <summary>
+    /// The generated source lines this block owns: the statement's own line and, for
+    /// an if/else, the `else` keyword's line. AstConverter rewrites them every
+    /// validation pass; while the VM runs, the block whose line the current
+    /// instruction reports draws the gold highlight.
+    /// </summary>
+    public int RunLine { get; set; } = -1;
+    public int RunLineAlt { get; set; } = -1;
+
     public Rectangle Bounds => new Rectangle(X, Y, Width, Height);
 
     /// <summary>
@@ -196,7 +205,27 @@ abstract class Block : Element, IInteractable
 
     public void DrawChain(int offsetX, int offsetY)
     {
-        for (Block? b = this; b != null; b = b.Next) b.Draw(offsetX, offsetY);
+        for (Block? b = this; b != null; b = b.Next)
+        {
+            b.Draw(offsetX, offsetY);
+            b.DrawRunHighlight(offsetX, offsetY);
+        }
+    }
+
+    /// <summary>
+    /// Gold outline around the label row - the "segment" that is this block's code
+    /// line - while the VM is executing the instruction that belongs to it. Blocks
+    /// outside the workspace (palette templates) never glow: they carry no workspace.
+    /// </summary>
+    void DrawRunHighlight(int offsetX, int offsetY)
+    {
+        if (RunLine < 0 && RunLineAlt < 0) return;
+        if (Parent is not Workspace ws || ws.ActiveLine is not int line) return;
+        if (line != RunLine && line != RunLineAlt) return;
+
+        Raylib.DrawRectangleRoundedLines(
+            new Rectangle(X + offsetX - 1, RowTop + offsetY - 1, Width + 2, RowHeight + 2),
+            0.25f, 6, 2f, Theme.RunHighlight);
     }
 
     /// <summary>This block, everything after it, everything nested in C-block mouths,

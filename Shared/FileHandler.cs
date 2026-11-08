@@ -7,6 +7,15 @@ public class HandleInputFile
 {
     private readonly string _fileName;
 
+    /// <summary>Characters a line may start with for it to be map content, not code.</summary>
+    static readonly string[] MapIdentifiers = ["#", ".", "@", ">", "<", "^", "v"];
+
+    // The file exactly as it was read. A save writes the map part back verbatim from
+    // here and only replaces the code below it, so the in-memory map - a robot walked
+    // to a new cell, gold mined - never leaks into the file.
+    readonly List<string> _rawLines = [];
+    int _firstCodeLine = -1; // index of the first code line in _rawLines, -1 = no code
+
     public List<string> Code { get; private set; }
     public char[,]? Map { get; private set; }
 
@@ -21,12 +30,16 @@ public class HandleInputFile
     }
     public char[,]? ReadFile(string file)
     {
-        string[] mapIdentifiers = ["#", ".", "@", ">", "<", "^", "v"];
         int currentRow = 0;
+        _rawLines.Clear();
+        Code.Clear();
+        _firstCodeLine = -1;
         using FileStream fs = new(file, FileMode.Open, FileAccess.Read);
         using StreamReader sr = new(fs);
         
-        string[] nums = sr.ReadLine().Split(" ");
+        string? headerLine = sr.ReadLine();
+        _rawLines.Add(headerLine ?? "");
+        string[] nums = headerLine!.Split(" ");
         int rows = int.Parse(nums[0]);
         int cols = int.Parse(nums[1]);
         Map = new char[rows,cols];
@@ -35,6 +48,7 @@ public class HandleInputFile
         {
             string? mapLine = sr.ReadLine();
             if (mapLine == null) break;
+            _rawLines.Add(mapLine);
             
             for (int c = 0; c < mapLine.Length && c < cols; c++)
             {
@@ -45,7 +59,9 @@ public class HandleInputFile
         while (!sr.EndOfStream)
         {
             string? line = sr.ReadLine();
-            if (mapIdentifiers.Any(line.StartsWith))
+            if (line == null) break;
+            _rawLines.Add(line);
+            if (MapIdentifiers.Any(line.StartsWith))
             {
                 if (currentRow < Map.GetLength(0))
                 {
@@ -58,6 +74,7 @@ public class HandleInputFile
             }
             else
             {
+                if (_firstCodeLine < 0) _firstCodeLine = _rawLines.Count - 1;
                 Code.Add(line);
             }
         }
@@ -65,29 +82,32 @@ public class HandleInputFile
     }
 
     /// <summary>
-    /// Writes the file back in the format <see cref="ReadFile"/> takes: the rows/cols
-    /// header, the map rows, then the code - so a saved script reads back exactly like
-    /// the file it came from. Blank lines are dropped; they would be read back as code.
+    /// Writes the file back as the map part exactly as it was read - every line up to
+    /// the original code, then any map lines the file kept below the code - followed
+    /// by the new code. Only the code section is replaced: the in-memory map never
+    /// reaches the file. Blank lines are dropped; they would be read back as code.
     /// </summary>
     public void Write(string source)
     {
-        int rows = Map?.GetLength(0) ?? 0;
-        int cols = Map?.GetLength(1) ?? 0;
+        int codeStart = _firstCodeLine < 0 ? _rawLines.Count : _firstCodeLine;
+        var lines = new List<string>();
 
-        var lines = new List<string> { $"{rows} {cols}" };
-        for (int r = 0; r < rows; r++)
-        {
-            var row = new char[cols];
-            for (int c = 0; c < cols; c++)
-                row[c] = Map![r, c];
-            lines.Add(new string(row));
-        }
+        for (int i = 0; i < codeStart; i++)
+            if (_rawLines[i].Length > 0) lines.Add(_rawLines[i]);
 
         // The rendered source may use \r\n; strip the CR so lines read back clean.
         foreach (string line in source.Split('\n'))
         {
             string clean = line.TrimEnd('\r');
             if (clean.Length > 0) lines.Add(clean);
+        }
+
+        // Map lines below the original code (a trailing corrected map block) stay
+        // below the new code; the old code lines are dropped with the rest.
+        for (int i = codeStart; i < _rawLines.Count; i++)
+        {
+            string line = _rawLines[i];
+            if (line.Length > 0 && MapIdentifiers.Any(line.StartsWith)) lines.Add(line);
         }
 
         File.WriteAllLines(_fileName, lines);

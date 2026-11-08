@@ -21,6 +21,10 @@ sealed class OutputField : Frame
     /// <summary>The print output, oldest first; whatever runs Print appends here.</summary>
     public List<string> Lines { get; } = new();
 
+    /// <summary>Hands a printed value to the panel; the VM runner calls this when
+    /// the instruction it just executed is a print.</summary>
+    public void Append(string text) => Lines.Add(text);
+
     /// <summary>Gold mined so far / gold the map shipped with; the workspace keeps
     /// these in step with the map every frame.</summary>
     public int GoldMined { get; set; }
@@ -54,10 +58,13 @@ sealed class OutputField : Frame
         }
         else
         {
+            // Tail window: the newest lines win when the panel is full, so the value
+            // the running script just printed is always the visible one at the bottom.
             int maxLines = Math.Max(0, (textH - PadY * 2) / (TextSize + LineSpacing));
-            for (int i = 0; i < Lines.Count && i < maxLines; i++)
+            int start = Math.Max(0, Lines.Count - maxLines);
+            for (int i = start; i < Lines.Count; i++)
             {
-                int y = drawY + PadY + i * (TextSize + LineSpacing);
+                int y = drawY + PadY + (i - start) * (TextSize + LineSpacing);
                 Raylib.DrawText(Lines[i], drawX + PadX, y, TextSize, Theme.TextDark);
             }
         }

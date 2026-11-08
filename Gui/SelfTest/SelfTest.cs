@@ -4,6 +4,7 @@ using Raylib_CsLo;
 using Shared;
 using T2G_Cookie.Backend.Parsing;
 using T2G_Cookie.Gui;
+using T2G_Cookie.Main;
 using T2G_Cookie.Shared;
 using T2G_Cookie.Shared.Ast;
 using T2G_Cookie.Shared.Values;
@@ -56,6 +57,7 @@ print count
             Run("Hat block snapping", TestHatSnap);
             Run("Dropping straight from the toolbox", TestToolboxDropSnap);
             Run("Robot control under the map", TestRobotControl);
+            Run("Reset Map restores the original map", TestResetMap);
             Run("Dropping outside the visible area", TestClamp);
             Run("Slot attach / detach / refusals", TestSlotBasics);
             Run("Snapping a reporter into a field", TestIntoSlotSnap);
@@ -74,6 +76,9 @@ print count
             Run("Empty C-block mouths are rejected", TestEmptyMouths);
             Run("Workspace and toolbox render", TestDrawSmoke);
             Run("Validation badges", TestValidation);
+            Run("Running the script on the Backend VM", TestVmRun);
+            Run("Print values land in the output field", TestPrintOutput);
+            Run("Start turns into Stop and reverts the map", TestStopButton);
             Run("Fuzz", TestFuzz);
         }
         catch (FirstFailure)
@@ -567,6 +572,75 @@ print count
         ws.Update(0, 0);
         Check(!ws.StartButton.Disabled, "Start comes back when control is unchecked");
         Healthy(ws, "after robot control");
+    }
+
+    /// <summary>The blue Reset Map button: the full reset - terrain, mined gold, and
+    /// the robot's cell and orientation all go back to what the map loaded with,
+    /// unlike Reset Gold alone, which keeps the robot where it stands.</summary>
+    static void TestResetMap()
+    {
+        Workspace ws = NewWorkspace();
+
+        // Same shape as the control test: '>' at (0,0) facing right, a wall beside it,
+        // gold below.
+        ws.LoadMap(new MapHandler(new[,]
+        {
+            { '>', '#', '.', '.' },
+            { '@', '.', '.', '.' },
+            { '.', '.', '.', '.' },
+        }));
+
+        // One draw pass so the panels take their real heights (RobotButtons sizes in Draw).
+        Raylib.BeginDrawing();
+        Raylib.ClearBackground(Raylib.WHITE);
+        ws.Draw(0, 0);
+        Raylib.EndDrawing();
+
+        Check(ws.ResetMapButton.Bounds.X + ws.ResetMapButton.Width <= ws.ResetButton.Bounds.X,
+            "the Reset Map button sits left of Reset Gold");
+        Check(ws.ResetButton.Bounds.X + ws.ResetButton.Width <= ws.SaveButton.Bounds.X,
+            "Reset Gold still sits left of Save");
+        Check(Raylib.MeasureText("Reset Map", 14) <= ws.ResetMapButton.Width - 8,
+            "the Reset Map label fits its button");
+
+        MapHandler map = ws.MapPanel.Map!;
+        Vector2 Center(int button)
+        {
+            Rectangle r = ws.RobotButtons.ButtonBounds(button);
+            return new Vector2(r.X + r.width / 2, r.Y + r.height / 2);
+        }
+
+        // Drive far from the original state: turn down, walk onto the gold, mine it,
+        // then turn again - position, orientation and mined marks all drift.
+        ws.RobotToggle.Click();                    // manual control owns the map now
+        ws.RobotButtons.Click(Center(1));          // right -> down
+        ws.RobotButtons.Click(Center(2));          // onto the gold at (0,1)
+        ws.RobotButtons.Click(Center(3));          // mine it
+        ws.RobotButtons.Click(Center(0));          // down -> right
+        ws.RobotButtons.Click(Center(0));          // right -> up
+        Check(map.IdentifyRobot(out Direction? drifted) is { X: 0, Y: 1 } && drifted == Direction.Up,
+            "the robot drifted to a new cell facing a new way");
+        Check(map.IsMined(1, 0) && map.GoldMined == 1, "the gold is mined before the full reset");
+
+        ws.ResetMap();
+
+        Check(map.IdentifyRobot(out Direction? home) is { X: 0, Y: 0 } && home == Direction.Right,
+            "reset map puts the robot back on its original cell, facing the original way");
+        Check(map.ElementAt(0, 1) == MapHandler.MapElement.Wall,
+            "reset map restores the original wall");
+        Check(map.ElementAt(1, 0) == MapHandler.MapElement.Gold && !map.IsMined(1, 0),
+            "reset map brings the gold back and clears the mined mark");
+        Check(map.GoldMined == 0 && map.TotalGold == 1, "reset map clears the collected count");
+        ws.Update(0, 0);
+        Check(ws.Output.GoldMined == 0 && ws.Output.TotalGold == 1,
+            "the gold row follows the full reset");
+
+        // The robot drives from its start the original way again.
+        ws.RobotButtons.Click(Center(1));          // right -> down
+        ws.RobotButtons.Click(Center(2));          // onto the gold at (0,1)
+        Check(map.IdentifyRobot(out _) is { X: 0, Y: 1 },
+            "after the reset the robot starts over from its original cell");
+        Healthy(ws, "after reset map");
     }
 
     static void TestClamp()
@@ -1362,6 +1436,19 @@ print count
             Check(string.Join("\n", reloaded.Code) == "print 1",
                 "the code round trips through the file");
 
+            // A save replaces only the code section: the map part goes back exactly as
+            // the file had it, never as memory has it (a walked robot mutates the very
+            // array the file was read into - that is how the map used to drift).
+            handler.Map![0, 0] = '#';
+            handler.Write("step forward 1");
+            string[] disk = File.ReadAllLines(path);
+            Check(disk.Length == 3 && disk[0] == "1 1" && disk[1] == ".",
+                "the save writes the file's map part, not the in-memory one");
+            HandleInputFile after = new(path);
+            Check(after.Code.Count == 1 && after.Code[0] == "step forward 1",
+                "the code section was replaced");
+            Check(after.Map![0, 0] == '.', "the map reloads exactly as the file had it");
+
             // Save sits to the left of Start, on the same row.
             ws.Update(0, 0);
             Check(ws.SaveButton.Bounds.X + ws.SaveButton.Bounds.width <= ws.StartButton.Bounds.X &&
@@ -1812,6 +1899,246 @@ print count
 
         Check(ws.Validation.Errors.Count == 9,
             "the live badges agree with the Start-button result");
+    }
+
+    /// <summary>
+    /// Start runs the script on the Backend VM through the real Main/Runner wiring:
+    /// OnInstruction maps the robot onto the map panel and moves the active-line
+    /// highlight after every instruction, the run clears the highlight at the end,
+    /// and a failure comes back through MachineSpirit's log without an exception.
+    /// </summary>
+    static void TestVmRun()
+    {
+        Workspace ws = NewWorkspace();
+
+        // '>' robot at (0,0) facing right, open floor to (2,0) where the gold waits.
+        ws.LoadMap(new MapHandler(new[,]
+        {
+            { '>', '.', '@', '.' },
+            { '#', '.', '.', '.' },
+            { '.', '.', '.', '.' },
+        }));
+
+        HatBlock hat = (HatBlock)ByKind(BlockKind.Start);
+        StackBlock step1 = (StackBlock)ByKind(BlockKind.Step);
+        Check(step1.AttachToSlot(step1.Slots[0], Num(1)), "step took its number");
+        StackBlock step2 = (StackBlock)ByKind(BlockKind.Step);
+        Check(step2.AttachToSlot(step2.Slots[0], Num(1)), "step took its number");
+        StackBlock mine = (StackBlock)ByKind(BlockKind.Mine);
+        Check(hat.Append(step1) && step1.Append(step2) && step2.Append(mine),
+            "step/step/mine chained under the Start block");
+        ws.LoadRoot(hat, 40, 40); // parents every block, the way the file loader does
+
+        ws.Update(0, 0);
+        AstResult? captured = null;
+        ws.RunProgram = r => captured = r;
+        AstResult result = ws.RunStart();
+        Check(captured != null && result.Errors.Count == 0 && result.Scripts.Length == 1,
+            "Start hands the converted script to the host runner");
+        Check(step1.RunLine == 1 && step2.RunLine == 2 && mine.RunLine == 3,
+            "every statement owns its generated source line");
+
+        ws.HighlightLine(2);
+        Check(ws.ActiveLine == 2, "the running line is exposed to the block highlight");
+        ws.HighlightLine(null);
+
+        // The real wiring, minus the frame presenter: each record is what the
+        // OnInstruction handler left behind when its instruction finished.
+        MapHandler map = ws.MapPanel.Map!;
+        var seen = new List<(int? Line, Vector2Int? Robot, bool Mined)>();
+        Runner.Run(ws, result, () =>
+            seen.Add((ws.ActiveLine, map.IdentifyRobot(out _), map.IsMined(0, 2))));
+
+        Check(seen.Count == 3, $"three instructions were reported, got {seen.Count}");
+        if (seen.Count == 3)
+        {
+            Check(seen[0].Line == 1 && seen[0].Robot is { X: 1, Y: 0 },
+                "step one: line 1 highlighted, robot moved to (1,0)");
+            Check(seen[1].Line == 2 && seen[1].Robot is { X: 2, Y: 0 },
+                "step two: line 2 highlighted, robot moved to (2,0)");
+            Check(seen[2].Line == 3 && seen[2].Mined,
+                "mine: line 3 highlighted, the gold under the robot is mined");
+        }
+        Check(ws.ActiveLine == null, "the highlight clears when the run ends");
+        Check(map.GoldMined == 1 && map.IsMined(0, 2), "the mined gold shows on the handler");
+        Check(map.IdentifyRobot(out _) is { X: 2, Y: 0 }, "the marker followed the spirit to the end");
+        Check(ws.Output.GoldMined == 1 && ws.Output.TotalGold == 1,
+            "the gold row followed the run");
+
+        // A failing run (mine with no gold underfoot) reports through the log and
+        // still leaves the workspace clean - no highlight, no mined gold, no throw.
+        Workspace bare = NewWorkspace();
+        bare.LoadMap(new MapHandler(new[,] { { '>', '.' } }));
+        HatBlock bareHat = (HatBlock)ByKind(BlockKind.Start);
+        StackBlock bareMine = (StackBlock)ByKind(BlockKind.Mine);
+        Check(bareHat.Append(bareMine), "the doomed script chained");
+        bare.LoadRoot(bareHat, 20, 20);
+        bare.Update(0, 0);
+        AstResult doomed = bare.RunStart(); // no runner wired: converts like before
+        Check(doomed.Errors.Count == 0, "the doomed script converts cleanly");
+
+        Runner.Run(bare, doomed);
+        Check(bare.ActiveLine == null, "a failed run leaves no highlight behind");
+        Check(bare.MapPanel.Map!.GoldMined == 0, "a failed mine mines nothing");
+        string log = File.ReadAllText(Runner.LogPath);
+        Check(log.Contains("E_NO_GOLD") && log.Contains("EOR"),
+            "the spirit logged the failure and the end of the run");
+
+        if (File.Exists(Runner.LogPath)) File.Delete(Runner.LogPath);
+    }
+
+    /// <summary>
+    /// print shows its resolved value in the output field: the API wrapper keeps the
+    /// VM's log parameter and the OnInstruction handler consumes it exactly when the
+    /// executed statement is a print - set and the other statements never write.
+    /// </summary>
+    static void TestPrintOutput()
+    {
+        Workspace ws = NewWorkspace();
+        ws.LoadMap(new MapHandler(new[,] { { '>', '.' } }));
+        Check(ws.Registry.TryCreate("n", out _), "the test variable exists");
+
+        HatBlock hat = (HatBlock)ByKind(BlockKind.Start);
+        StackBlock set = (StackBlock)ByKind(BlockKind.Set);
+        set.Slots[0].SelectedName = "n"; // the name dropdown picks the variable
+        Check(set.AttachToSlot(set.Slots[1], Num(5)), "set took its value");
+        StackBlock printVar = (StackBlock)ByKind(BlockKind.Print);
+        Check(printVar.AttachToSlot(printVar.Slots[0], Var("n")), "print took its variable");
+        StackBlock printNum = (StackBlock)ByKind(BlockKind.Print);
+        Check(printNum.AttachToSlot(printNum.Slots[0], Num(7)), "print took its number");
+        Check(hat.Append(set) && set.Append(printVar) && printVar.Append(printNum),
+            "set/print/print chained");
+        ws.LoadRoot(hat, 40, 40);
+        ws.Update(0, 0);
+
+        AstResult result = ws.RunStart();
+        string problems = string.Join(" | ", result.Errors.Select(e => e.Message));
+        Check(result.Errors.Count == 0, $"set/print converts cleanly, got: {problems}");
+
+        // One snapshot per reported instruction: the append happens in the handler
+        // before the presenter runs, so the snapshot shows exactly what was visible.
+        var snapshots = new List<string[]>();
+        Runner.Run(ws, result, () => snapshots.Add(ws.Output.Lines.ToArray()));
+
+        Check(snapshots.Count == 3, $"three instructions were reported, got {snapshots.Count}");
+        if (snapshots.Count == 3)
+        {
+            Check(snapshots[0].Length == 0, "set prints nothing");
+            Check(snapshots[1].Length == 1 && snapshots[1][0] == "n = 5",
+                "print n put 'n = 5' in the field, naming the variable");
+            Check(snapshots[2].Length == 2 && snapshots[2][0] == "n = 5" && snapshots[2][1] == "7",
+                "print 7 appended its bare value after it");
+        }
+        Check(ws.Output.Lines.Count == 2 && ws.Output.Lines[0] == "n = 5" && ws.Output.Lines[1] == "7",
+            $"the field ends holding the named variable and the literal, got [{string.Join(",", ws.Output.Lines)}]");
+        Check(ws.ActiveLine == null, "the highlight cleared after the print run");
+
+        // The same story through the file path the app uses: AstLoader rebuilds the
+        // blocks from parsed source, then Start runs them - the naming must survive
+        // that route too.
+        Workspace loaded = NewWorkspace();
+        loaded.LoadMap(new MapHandler(new[,] { { '>' } }));
+        TextWriter savedOut = Console.Out;
+        Body fromFile;
+        try
+        {
+            Console.SetOut(TextWriter.Null);
+            fromFile = MineCode.ParseCode("set n to 5\nprint 7\nprint n");
+        }
+        finally
+        {
+            Console.SetOut(savedOut);
+        }
+        List<string> loadProblems = AstLoader.Load(loaded, [fromFile]);
+        Check(loadProblems.Count == 0,
+            "the file-style script loaded, got: " + string.Join(" | ", loadProblems));
+        loaded.Update(0, 0);
+        loaded.RunProgram = r => Runner.Run(loaded, r);
+        AstResult loadedResult = loaded.RunStart();
+        Check(loadedResult.Errors.Count == 0, "the file-style script converts");
+        Check(loaded.Output.Lines.Count == 2 &&
+              loaded.Output.Lines[0] == "7" && loaded.Output.Lines[1] == "n = 5",
+            $"the loaded script prints bare 7 then 'n = 5', got [{string.Join(",", loaded.Output.Lines)}]");
+        loaded.StopRun();
+        Check(loaded.Output.Lines.Count == 0, "stopping clears the loaded run's output too");
+
+        if (File.Exists(Runner.LogPath)) File.Delete(Runner.LogPath);
+    }
+
+    /// <summary>
+    /// Start opens a run session: the button becomes the red Stop, the program runs
+    /// and leaves its result on the map, and only a Stop click closes the session -
+    /// putting the map back to its pre-start state and making the next start legal.
+    /// Wired exactly like the app: Start hands the script to the real Runner.
+    /// </summary>
+    static void TestStopButton()
+    {
+        Workspace ws = NewWorkspace();
+
+        // '>' at (0,0) facing right, floor at (1,0), gold at (2,0): the script walks
+        // there and mines, so both position and mined marks drift from the start.
+        ws.LoadMap(new MapHandler(new[,] { { '>', '.', '@' } }));
+
+        HatBlock hat = (HatBlock)ByKind(BlockKind.Start);
+        StackBlock step1 = (StackBlock)ByKind(BlockKind.Step);
+        Check(step1.AttachToSlot(step1.Slots[0], Num(1)), "step took its number");
+        StackBlock step2 = (StackBlock)ByKind(BlockKind.Step);
+        Check(step2.AttachToSlot(step2.Slots[0], Num(1)), "step took its number");
+        StackBlock mine = (StackBlock)ByKind(BlockKind.Mine);
+        StackBlock print = (StackBlock)ByKind(BlockKind.Print);
+        Check(print.AttachToSlot(print.Slots[0], Num(7)), "print took its number");
+        Check(hat.Append(step1) && step1.Append(step2) && step2.Append(mine) && mine.Append(print),
+            "step/step/mine/print chained");
+        ws.LoadRoot(hat, 40, 40);
+        ws.Update(0, 0);
+
+        MapHandler map = ws.MapPanel.Map!;
+        Check(!ws.Running && !ws.StartButton.IsStop, "idle: Start is Start");
+
+        ws.RunProgram = r => Runner.Run(ws, r); // the app's wiring, minus the presenter
+        AstResult result = ws.RunStart();
+        Check(result.Errors.Count == 0, "the script converts cleanly");
+        Check(ws.Running, "the session is open even though the program already finished");
+        ws.Update(0, 0);
+        Check(ws.StartButton.IsStop, "the button became Stop");
+        Check(map.IdentifyRobot(out _) is { X: 2, Y: 0 } && map.GoldMined == 1,
+            "the program ran: the robot walked and mined");
+        Check(ws.ActiveLine == null, "the finished run leaves no highlight");
+        Check(ws.Output.Lines.Count == 1 && ws.Output.Lines[0] == "7",
+            "the run's print is in the output");
+
+        // Robot control greys Start out, but the Stop face must stay reachable.
+        ws.RobotToggle.Click();
+        ws.Update(0, 0);
+        Check(ws.StartButton.Disabled && ws.StartButton.IsStop,
+            "control greys the button while the Stop face stays");
+        ws.RobotToggle.Click();
+
+        // Stop closes the session and puts the map back to what Start was given.
+        ws.StopRun();
+        Check(!ws.Running, "Stop closes the session");
+        Check(ws.Output.Lines.Count == 0, "Stop clears the output window");
+        ws.Update(0, 0);
+        Check(!ws.StartButton.IsStop, "the button is Start again");
+        Check(map.IdentifyRobot(out Direction? home) is { X: 0, Y: 0 } && home == Direction.Right,
+            "the robot is back where Start was clicked, facing the original way");
+        Check(map.ElementAt(0, 2) == MapHandler.MapElement.Gold && !map.IsMined(0, 2) &&
+              map.GoldMined == 0, "the mined gold came back");
+        Check(!ws.StopRequested(), "no click, no stop request");
+
+        // With the session closed, the program can start again from the restored state.
+        AstResult again = ws.RunStart();
+        Check(again.Errors.Count == 0 && ws.Running, "after Stop the program can start again");
+        Check(map.IdentifyRobot(out _) is { X: 2, Y: 0 } && map.GoldMined == 1,
+            "the second run walked and mined from the restored start");
+        Check(ws.Output.Lines.Count == 1 && ws.Output.Lines[0] == "7",
+            "the second run prints into the output again");
+        ws.StopRun();
+        Check(!ws.Running && map.GoldMined == 0 && map.IdentifyRobot(out _) is { X: 0, Y: 0 } &&
+              ws.Output.Lines.Count == 0,
+            "the second Stop restores the map and empties the output too");
+
+        if (File.Exists(Runner.LogPath)) File.Delete(Runner.LogPath);
     }
 
     static void TestFuzz()

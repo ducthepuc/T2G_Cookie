@@ -8,11 +8,19 @@ public class MapHandler
 
     readonly char[,] map;
 
+    // The grid exactly as it was loaded; ResetMap puts everything back from it.
+    readonly char[,] _original;
+
     MapElement[,] parsableMap;
 
     // Cells whose gold was mined this session (row, col), for display only: the
     // parsed element is a Wall either way, exactly as MachineSpirit leaves it.
     readonly HashSet<(int Row, int Col)> _mined = [];
+
+    // The state before the current run: Start checkpoints, Stop restores.
+    char[,]? _runMap;
+    MapElement[,]? _runParsable;
+    HashSet<(int Row, int Col)>? _runMined;
     
     public enum MapElement : long
     {
@@ -24,6 +32,7 @@ public class MapHandler
     public MapHandler(char[,] map)
     {
         this.map = map;
+        _original = (char[,])map.Clone();
         ParseMap();
     }
 
@@ -40,6 +49,25 @@ public class MapHandler
 
     /// <summary>The parsed element at a grid cell, for viewers such as the GUI map panel.</summary>
     public MapElement ElementAt(int row, int col) => parsableMap[row, col];
+
+    /// <summary>
+    /// Puts the robot marker at the cell the VM's MachineSpirit stands on, facing the
+    /// way it faces - how the run view follows the spirit after every instruction. The
+    /// cell the robot leaves goes back to its terrain, so the matrix stays consistent
+    /// for saving and for the next IdentifyRobot.
+    /// </summary>
+    public bool PlaceRobot(Vector2Int position, Direction facing)
+    {
+        if (position.X < 0 || position.Y < 0 || position.X >= Cols || position.Y >= Rows)
+            return false;
+
+        Vector2Int? current = IdentifyRobot(out _);
+        if (current is { } old && (old.X != position.X || old.Y != position.Y))
+            map[old.Y, old.X] = CharOf(parsableMap[old.Y, old.X]);
+
+        map[position.Y, position.X] = CharOf(facing);
+        return true;
+    }
 
     /// <summary>Turns the robot marker in place; false when the map has no robot.</summary>
     public bool TurnRobotLeft()
@@ -205,6 +233,47 @@ public class MapHandler
             map[row, col] = '@';
         }
         _mined.Clear();
+    }
+
+    /// <summary>
+    /// Puts the whole map back to the state it was loaded in - unlike
+    /// <see cref="ResetMined"/>, which keeps the robot where it stands: the terrain
+    /// matrix becomes the original one again (so the robot marker sits on its
+    /// original cell facing its original way), the mined marks are gone, and the
+    /// parsed elements are rebuilt from those original cells.
+    /// </summary>
+    public void ResetMap()
+    {
+        for (int row = 0; row < Rows; row++)
+            for (int col = 0; col < Cols; col++)
+                map[row, col] = _original[row, col];
+
+        _mined.Clear();
+        ParseMap(); // parsableMap + TotalGold rebuilt from the restored matrix
+    }
+
+    /// <summary>Remembers the map exactly as it is now - terrain matrix, parsed
+    /// elements, mined marks - so a later <see cref="RestoreCheckpoint"/> can put the
+    /// state back (the run session's Start does this before the program touches it).</summary>
+    public void Checkpoint()
+    {
+        _runMap = (char[,])map.Clone();
+        _runParsable = (MapElement[,])parsableMap.Clone();
+        _runMined = new HashSet<(int Row, int Col)>(_mined);
+    }
+
+    /// <summary>Puts the map back to the last <see cref="Checkpoint"/>: the robot's
+    /// cell and orientation, the mined gold, and the parsed elements. No checkpoint
+    /// yet means nothing to restore.</summary>
+    public void RestoreCheckpoint()
+    {
+        if (_runMap == null || _runParsable == null || _runMined == null) return;
+
+        Array.Copy(_runMap, map, _runMap.Length);
+        Array.Copy(_runParsable, parsableMap, _runParsable.Length);
+        _mined.Clear();
+        foreach ((int row, int col) in _runMined)
+            _mined.Add((row, col));
     }
 
     /// <summary>Mines the cell the robot stands on - what MachineSpirit's Mine block

@@ -113,6 +113,15 @@ static class AstConverter
         var scripts = new List<Body>();
         Block? hatRoot = null;
 
+        // Fresh conversion: the running-line marks go first, so a statement that was
+        // removed (or a block that left the script) can never glow on a stale line.
+        foreach (Block root in ws.Roots)
+            foreach (Block b in root.Flatten())
+            {
+                b.RunLine = -1;
+                b.RunLineAlt = -1;
+            }
+
         foreach (Block root in ws.Roots)
         {
             if (root is HatBlock)
@@ -160,6 +169,7 @@ static class AstConverter
         // Taken before any nested body is converted, so the header of an if/while owns
         // its own line exactly the way MineCodeWriter writes it.
         int line = ctx.TakeLine();
+        b.RunLine = line; // the highlight the VM's OnInstruction drives
 
         switch (b.Kind)
         {
@@ -191,6 +201,7 @@ static class AstConverter
                     if (c.HasElse)
                     {
                         elseLine = ctx.TakeLine(); // the `else` keyword gets a line of its own
+                        c.RunLineAlt = elseLine;   // its Nop highlight lands on the if block
                         elseBody = new Body(ConvertChain(c.Inner2, ctx).ToArray());
                         if (elseBody.Instructions.Length == 0)
                             ctx.Error(c, "else body can't be empty");
