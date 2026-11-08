@@ -1040,7 +1040,7 @@ print count
                         new StepInstruction(new Literal(1), 13),
                         new SetInstruction("fal", new IsThere(new Literal(1)), 14),
                         new SetInstruction("megy", new Not(new Variable("fal")), 15),
-                    ]), 8),
+                    ]), 8, 12),
             ]), 6),
             new PrintInstruction(new Variable("count"), 16),
         ]);

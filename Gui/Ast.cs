@@ -187,14 +187,15 @@ static class AstConverter
                         ctx.Error(c, "if body can't be empty");
 
                     Body? elseBody = null;
+                    int elseLine = -1;
                     if (c.HasElse)
                     {
-                        ctx.NextLine++; // the `else` keyword gets a line of its own
+                        elseLine = ctx.TakeLine(); // the `else` keyword gets a line of its own
                         elseBody = new Body(ConvertChain(c.Inner2, ctx).ToArray());
                         if (elseBody.Instructions.Length == 0)
                             ctx.Error(c, "else body can't be empty");
                     }
-                    return new IfInstruction(ValueOf(b, 0, ctx), body, elseBody, line);
+                    return new IfInstruction(ValueOf(b, 0, ctx), body, elseBody, line, elseLine);
                 }
             case BlockKind.While:
                 {
