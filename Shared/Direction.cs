@@ -8,4 +8,6 @@ public readonly record struct Direction(int ModX, int ModY)
     public static readonly Direction Right = new(1, 0);
 
     public Direction TurnLeft() => new(ModY, -ModX);
+
+    public Direction TurnRight() => new(-ModY, ModX);
 }

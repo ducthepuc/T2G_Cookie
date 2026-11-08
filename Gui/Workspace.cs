@@ -114,7 +114,16 @@ public sealed class Workspace : Frame
     readonly SaveButton _save;
     readonly OutputField _output;
     readonly MapField _map;
+    readonly RobotToggle _robotToggle;
+    readonly RobotButtons _robotButtons;
     bool _overSave;
+    bool _overToggle;
+    bool _overButtons;
+
+    // Manual robot control: checked, the buttons own the run - the code is veiled
+    // and Start is disabled - and every press moves the robot through MapHandler,
+    // so the matrix is already updated the moment the box gets unchecked.
+    bool _robotControl;
 
     internal SaveButton SaveButton => _save;
     internal StartButton StartButton => _start;
@@ -124,6 +133,15 @@ public sealed class Workspace : Frame
 
     /// <summary>The 15x15 map panel under the output field; the host loads the map matrix into it.</summary>
     internal MapField MapPanel => _map;
+
+    /// <summary>The "Control Robot" checkbox frame under the map panel.</summary>
+    internal RobotToggle RobotToggle => _robotToggle;
+
+    /// <summary>The TURN LEFT / TURN RIGHT / FORWARD frame under the checkbox.</summary>
+    internal RobotButtons RobotButtons => _robotButtons;
+
+    /// <summary>True while manual robot control owns the run.</summary>
+    internal bool RobotControl => _robotControl;
 
     /// <summary>Exactly one "Start clicked" hat may exist; the toolbox greys its item out.</summary>
     internal bool HasStartBlock => _roots.Any(r => r is HatBlock);
@@ -159,6 +177,25 @@ public sealed class Workspace : Frame
             () => Pos.Bottom(_output)() + Theme.MapTopGap,
             Theme.OutputWPercent);
         AddChild(_map);
+
+        // The robot-control stack hangs under the map: checkbox first, the button
+        // row under it, both sharing the map's width and left edge.
+        _robotToggle = new RobotToggle(
+            () => Pos.Left(_map)(),
+            () => Pos.Bottom(_map)() + Theme.RobotPanelGap,
+            Theme.OutputWPercent,
+            state => _robotControl = state);
+        AddChild(_robotToggle);
+
+        _robotButtons = new RobotButtons(
+            () => Pos.Left(_map)(),
+            () => Pos.Bottom(_robotToggle)() + Theme.RobotPanelGap,
+            Theme.OutputWPercent,
+            () => _robotControl,
+            () => _map.Map?.TurnRobotLeft(),
+            () => _map.Map?.TurnRobotRight(),
+            () => _map.Map?.StepRobot());
+        AddChild(_robotButtons);
     }
 
     internal void AddRootBlock(Block block, Vector2 screenMouse) =>
@@ -256,10 +293,16 @@ public sealed class Workspace : Frame
         bool released = Raylib.IsMouseButtonReleased(MouseButton.MOUSE_BUTTON_LEFT);
         bool pressed = Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT);
         bool chromeBlocked = _drag == null && !_prompt.IsOpen && !_drop.IsOpen;
-        bool overStart = chromeBlocked && InsideRect(localMouse, _start.Bounds);
+        // Manual control is decided by the checkbox alone, so Start's state gates its
+        // own hover and click in the same frame the box changes.
+        _start.Disabled = _robotControl;
+        bool overStart = chromeBlocked && !_start.Disabled && InsideRect(localMouse, _start.Bounds);
         bool overSave = chromeBlocked && InsideRect(localMouse, _save.Bounds);
+        bool overToggle = chromeBlocked && InsideRect(localMouse, _robotToggle.Bounds);
+        bool overButtons = chromeBlocked && InsideRect(localMouse, _robotButtons.Bounds);
 
-        // The bar buttons are not Blocks, so route their hover/cursor by hand.
+        // The bar buttons and the robot-control panels are not Blocks, so route their
+        // hover/cursor by hand.
         if (overStart != _overStart)
         {
             if (overStart) _start.OnHover();
@@ -271,6 +314,18 @@ public sealed class Workspace : Frame
             if (overSave) _save.OnHover();
             else _save.OnUnhover();
             _overSave = overSave;
+        }
+        if (overToggle != _overToggle)
+        {
+            if (overToggle) _robotToggle.OnHover();
+            else _robotToggle.OnUnhover();
+            _overToggle = overToggle;
+        }
+        if (overButtons != _overButtons)
+        {
+            if (overButtons) _robotButtons.OnHover();
+            else _robotButtons.OnUnhover();
+            _overButtons = overButtons;
         }
 
         // Live validation: one walk per frame keeps badges, the dropdown and the Start
@@ -328,6 +383,22 @@ public sealed class Workspace : Frame
         {
             CommitEditing();
             Save();
+            return;
+        }
+
+        // 6. So do the robot-control panels: the click was already kept off the
+        //    blocks by chromeBlocked, here it either flips the checkbox or moves the
+        //    robot (RobotButtons itself refuses while the box is unchecked).
+        if (pressed && overToggle)
+        {
+            CommitEditing();
+            _robotToggle.Click(); // the callback flips _robotControl
+            return;
+        }
+        if (pressed && overButtons)
+        {
+            CommitEditing();
+            _robotButtons.Click(localMouse);
             return;
         }
 
@@ -433,11 +504,21 @@ public sealed class Workspace : Frame
         if (_roots.Count == 0 && _drag == null)
             Raylib.DrawText("Drag blocks here", screenX + 40, screenY + 40, 24, Theme.Border);
 
+        // Manual robot control freezes the code: every script behind a pale veil so
+        // the control buttons are unmistakably in charge. Tooltips still work - they
+        // draw outside the scissor at the end.
+        if (_robotControl)
+            foreach (Block root in _roots)
+                DrawChainVeil(root, screenX, screenY);
+
         // The output field lives under the bar: drawn after the scripts so blocks
         // never cover it, before the buttons so the bar stays on top of everything.
         _output.Draw(screenX, screenY);
-        // The map panel follows the output down the same stack.
+        // The map panel follows the output down the same stack, and the robot
+        // controls hang under the map.
         _map.Draw(screenX, screenY);
+        _robotToggle.Draw(screenX, screenY);
+        _robotButtons.Draw(screenX, screenY);
         _save.Draw(screenX, screenY);
         _start.Draw(screenX, screenY);
         DrawStatus(screenX, screenY);
@@ -747,6 +828,19 @@ public sealed class Workspace : Frame
         Raylib.DrawText("!", cx - 2, cy - Theme.BadgeRadius + 1, 14, Raylib.WHITE);
     }
 
+    /// <summary>Pale veil over one script while manual robot control owns the run:
+    /// the chain's bounding box, drawn after the chain so it reads as "frozen".</summary>
+    static void DrawChainVeil(Block root, int screenX, int screenY)
+    {
+        List<Block> blocks = root.Flatten().ToList();
+        int minX = blocks.Min(b => b.X);
+        int maxX = blocks.Max(b => b.X + b.Width);
+        int minY = blocks.Min(b => b.Y);
+        int maxY = blocks.Max(b => b.Y + b.Height);
+        Raylib.DrawRectangle(screenX + minX - 4, screenY + minY - 4,
+            maxX - minX + 8, maxY - minY + 8, new Color(255, 255, 255, 170));
+    }
+
     void DrawTooltip(int screenX, int screenY)
     {
         if (_validation.Errors.Count == 0) return;
@@ -880,6 +974,10 @@ sealed class StartButton : Element, IInteractable
     /// <summary>True when live validation reports at least one problem.</summary>
     public bool HasErrors { get; set; }
 
+    /// <summary>True while manual robot control owns the run: greyed out and not
+    /// clickable (the workspace keeps it out of the hover and the click).</summary>
+    public bool Disabled { get; set; }
+
     public bool IsHovered { get; set; }
     public bool IsActivated { get; set; }
 
@@ -898,14 +996,17 @@ sealed class StartButton : Element, IInteractable
         int y = Y + offsetY;
         var screenBounds = new Rectangle(x, y, Width, Height);
 
-        Color color = HasErrors ? Theme.StartWarn : HasScript ? Theme.StartGreen : Theme.StartDisabled;
+        Color color = Disabled ? Theme.StartDisabled
+            : HasErrors ? Theme.StartWarn
+            : HasScript ? Theme.StartGreen
+            : Theme.StartDisabled;
         if (IsHovered) color = Theme.Lighten(color, 0.14f);
         if (IsHovered && Raylib.IsMouseButtonDown(MouseButton.MOUSE_BUTTON_LEFT))
             color = Theme.Darken(color, 0.1f);
 
         Raylib.DrawRectangleRounded(screenBounds, 0.45f, 8, color);
 
-        Color textColor = HasScript || HasErrors ? Raylib.WHITE : Theme.TextDark;
+        Color textColor = !Disabled && (HasScript || HasErrors) ? Raylib.WHITE : Theme.TextDark;
         int centerY = (int)(y + Height / 2f);
         int textW = Raylib.MeasureText("Start", 14);
         int contentW = 8 + 4 + textW;

@@ -55,6 +55,7 @@ print count
             Run("Above drop out of a C-block mouth", TestAboveOutOfMouth);
             Run("Hat block snapping", TestHatSnap);
             Run("Dropping straight from the toolbox", TestToolboxDropSnap);
+            Run("Robot control under the map", TestRobotControl);
             Run("Dropping outside the visible area", TestClamp);
             Run("Slot attach / detach / refusals", TestSlotBasics);
             Run("Snapping a reporter into a field", TestIntoSlotSnap);
@@ -436,6 +437,83 @@ print count
         Check(d.Previous == null && Roots(ws).Contains(d),
             "the plain top-left drop misses outside the snap radius");
         Healthy(ws, "after a missed drop");
+    }
+
+    /// <summary>The checkbox/button stack under the map: layout, the Start gate, and
+    /// the robot walking (or refusing to walk) through MapHandler.</summary>
+    static void TestRobotControl()
+    {
+        Workspace ws = NewWorkspace();
+
+        // '>' robot at (0,0) facing right with a wall beside it; gold at (0,1).
+        ws.LoadMap(new MapHandler(new char[,]
+        {
+            { '>', '#', '.', '.' },
+            { '@', '.', '.', '.' },
+            { '.', '.', '.', '.' },
+        }));
+
+        // One draw pass so the panels take their real heights (MapField sizes in Draw).
+        Raylib.BeginDrawing();
+        Raylib.ClearBackground(Raylib.WHITE);
+        ws.Draw(0, 0);
+        Raylib.EndDrawing();
+
+        Check(ws.RobotToggle.Y == ws.MapPanel.Y + ws.MapPanel.Height + Theme.RobotPanelGap,
+            "the checkbox frame sits under the map panel");
+        Check(ws.RobotButtons.Y == ws.RobotToggle.Y + ws.RobotToggle.Height + Theme.RobotPanelGap,
+            "the button frame sits under the checkbox");
+        Check(ws.RobotToggle.Width == ws.MapPanel.Width && ws.RobotButtons.Width == ws.MapPanel.Width,
+            "both robot-control frames are as wide as the map");
+
+        MapHandler? map = ws.MapPanel.Map;
+        Check(!ws.RobotControl && map != null, "control starts unchecked with the map loaded");
+
+        Rectangle forwardRect = ws.RobotButtons.ButtonBounds(2);
+        Vector2 forward = new(forwardRect.X + forwardRect.width / 2,
+                              forwardRect.Y + forwardRect.height / 2);
+        Rectangle turnLeftRect = ws.RobotButtons.ButtonBounds(0);
+        Vector2 turnLeft = new(turnLeftRect.X + turnLeftRect.width / 2,
+                               turnLeftRect.Y + turnLeftRect.height / 2);
+
+        // Unchecked: the buttons are dead and Start belongs to the code.
+        ws.RobotButtons.Click(forward);
+        Check(map!.IdentifyRobot(out _) is { X: 0, Y: 0 },
+            "an unchecked click does not move the robot");
+        ws.Update(0, 0);
+        Check(!ws.StartButton.Disabled, "Start is live while control is off");
+
+        // Checked: the run moves to the buttons and Start goes out.
+        ws.RobotToggle.Click();
+        Check(ws.RobotControl, "the checkbox turns control on");
+        ws.Update(0, 0);
+        Check(ws.StartButton.Disabled, "checking the box disables Start");
+
+        // FORWARD into the wall and off the edge: both refused, position untouched.
+        ws.RobotButtons.Click(forward);
+        Check(map.IdentifyRobot(out _) is { X: 0, Y: 0 }, "forward into a wall does not move");
+        ws.RobotButtons.Click(turnLeft);          // right -> up
+        ws.RobotButtons.Click(forward);
+        Check(map.IdentifyRobot(out _) is { X: 0, Y: 0 }, "forward off the map does not move");
+        Check(map.ElementAt(0, 1) == MapHandler.MapElement.Wall, "the wall is still a wall");
+
+        // Two more left turns face it down the first column, where the gold waits.
+        ws.RobotButtons.Click(turnLeft);          // up -> left
+        ws.RobotButtons.Click(turnLeft);          // left -> down
+        ws.RobotButtons.Click(forward);           // onto the gold at (0,1)
+        Check(map.IdentifyRobot(out Direction? facing) is { X: 0, Y: 1 } && facing == Direction.Down,
+            "forward onto gold moves the robot");
+        Check(map.ElementAt(1, 0) == MapHandler.MapElement.Gold,
+            "the gold stays under the robot for the display and the simulator");
+
+        // Unchecking leaves the matrix carrying the new position - IdentifyRobot is
+        // exactly what the simulator will read to pick the run up.
+        ws.RobotToggle.Click();
+        Check(!ws.RobotControl && map.IdentifyRobot(out _) is { X: 0, Y: 1 },
+            "unchecking keeps the map at the updated position");
+        ws.Update(0, 0);
+        Check(!ws.StartButton.Disabled, "Start comes back when control is unchecked");
+        Healthy(ws, "after robot control");
     }
 
     static void TestClamp()

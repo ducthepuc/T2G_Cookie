@@ -42,8 +42,10 @@ sealed class MapField : Frame
         Width = Dim.GetWSize(WPercent);
         Height = Width;
         (int drawX, int drawY) = ResolvePosition(offsetX, offsetY);
-        // Never reach below the window: the tile size follows the clamped height.
-        Height = Math.Max(16, Math.Min(Height, Raylib.GetScreenHeight() - drawY - 4));
+        // Never reach below the window or swallow the robot-control stack under the
+        // panel: the tile size follows the clamped height.
+        Height = Math.Max(16, Math.Min(Height,
+            Raylib.GetScreenHeight() - drawY - Theme.RobotStackBelow));
 
         base.Draw(offsetX, offsetY); // square background, no children to clip
 
@@ -81,12 +83,26 @@ sealed class MapField : Frame
                 int x = originX + col * tile;
                 int y = originY + row * tile;
 
-                if (robot is { } position && position.X == col && position.Y == row)
+                MapHandler.MapElement element = _map.ElementAt(row, col);
+                bool robotHere = robot is { } position && position.X == col && position.Y == row;
+
+                if (robotHere && element == MapHandler.MapElement.Gold)
+                    DrawFloatingGold(x, y, tile); // gold the robot stands on stays visible
+                else if (!robotHere)
+                    DrawCell(element, x, y, tile);
+
+                if (robotHere)
                     DrawRobot(x + tile / 2, y + tile / 2, tile, facing!.Value);
-                else
-                    DrawCell(_map.ElementAt(row, col), x, y, tile);
             }
         }
+    }
+
+    /// <summary>The cell's gold, shrunk and parked in the top-left corner so the
+    /// robot standing on the cell does not hide it.</summary>
+    static void DrawFloatingGold(int x, int y, int tile)
+    {
+        int small = Math.Max(2, tile / 6);
+        Raylib.DrawRectangle(x + 2, y + 2, small, small, Theme.MapGold);
     }
 
     static void DrawCell(MapHandler.MapElement element, int x, int y, int tile)

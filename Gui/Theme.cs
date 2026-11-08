@@ -57,6 +57,17 @@ static class Theme
     // map panel under the print-output field
     public const int MapTopGap = 8;
 
+    // robot control stack under the map: checkbox frame, buttons frame, gaps
+    public const int RobotPanelGap = 8;
+    public const int RobotToggleH = 34;
+    public const int RobotButtonsH = 40;
+    public const int RobotButtonGap = 6;
+
+    /// <summary>Everything the panels below the map need; the map clamps its height
+    /// so the stack always fits on screen.</summary>
+    public const int RobotStackBelow =
+        RobotPanelGap + RobotToggleH + RobotPanelGap + RobotButtonsH + RobotPanelGap;
+
     // colors
     public static readonly Color WorkspaceBg = Rgb(240, 244, 255);
     public static readonly Color ToolboxBg = Rgb(255, 255, 255);

@@ -25,6 +25,9 @@ public class Frame : Element
         public Color Color { get; set; } = Raylib.GRAY;
         public bool DrawBackground { get; set; } = false;
 
+        /// <summary>The frame's rectangle in its parent's coordinates, for hit tests.</summary>
+        public Rectangle Bounds => new Rectangle(X, Y, Width, Height);
+
         public Frame(Func<int> x, Func<int> y, int wPercent, int hPercent, Anchor hAnchor = Anchor.Start, Anchor vAnchor = Anchor.Start) : base(x, y)
         {
                 WPercent = wPercent;

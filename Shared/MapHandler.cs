@@ -29,6 +29,60 @@ public class MapHandler
     /// <summary>The parsed element at a grid cell, for viewers such as the GUI map panel.</summary>
     public MapElement ElementAt(int row, int col) => parsableMap[row, col];
 
+    /// <summary>Turns the robot marker in place; false when the map has no robot.</summary>
+    public bool TurnRobotLeft()
+    {
+        Vector2Int? pos = IdentifyRobot(out Direction? facing);
+        if (pos == null || facing == null) return false;
+        map[pos.Value.Y, pos.Value.X] = CharOf(facing.Value.TurnLeft());
+        return true;
+    }
+
+    /// <summary>See <see cref="TurnRobotLeft"/>; the mirror turn.</summary>
+    public bool TurnRobotRight()
+    {
+        Vector2Int? pos = IdentifyRobot(out Direction? facing);
+        if (pos == null || facing == null) return false;
+        map[pos.Value.Y, pos.Value.X] = CharOf(facing.Value.TurnRight());
+        return true;
+    }
+
+    /// <summary>
+    /// Steps the robot one cell forward: false at the map edge or into a wall, so a
+    /// manual driver can never push it through terrain. The cell it leaves goes back
+    /// to its terrain - a gold it stood on reappears there - which keeps the matrix
+    /// consistent for saving and for the simulator picking the position up later.
+    /// </summary>
+    public bool StepRobot()
+    {
+        Vector2Int? pos = IdentifyRobot(out Direction? facing);
+        if (pos == null || facing == null) return false;
+
+        int col = pos.Value.X + facing.Value.ModX;
+        int row = pos.Value.Y + facing.Value.ModY;
+        if (row < 0 || row >= Rows || col < 0 || col >= Cols) return false;
+        if (parsableMap[row, col] == MapElement.Wall) return false;
+
+        map[pos.Value.Y, pos.Value.X] = CharOf(parsableMap[pos.Value.Y, pos.Value.X]);
+        map[row, col] = CharOf(facing.Value);
+        return true;
+    }
+
+    static char CharOf(MapElement element) => element switch
+    {
+        MapElement.Wall => '#',
+        MapElement.Gold => '@',
+        _ => '.',
+    };
+
+    static char CharOf(Direction facing) => facing.ModX switch
+    {
+        1 => '>',
+        -1 => '<',
+        _ when facing.ModY < 0 => '^',
+        _ => 'v',
+    };
+
     void ParseMap()
     {
         parsableMap = new MapElement[map.GetLength(0),map.GetLength(1)];
