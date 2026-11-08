@@ -9,6 +9,10 @@ public class MapHandler
     readonly char[,] map;
 
     MapElement[,] parsableMap;
+
+    // Cells whose gold was mined this session (row, col), for display only: the
+    // parsed element is a Wall either way, exactly as MachineSpirit leaves it.
+    readonly HashSet<(int Row, int Col)> _mined = [];
     
     public enum MapElement : long
     {
@@ -165,9 +169,14 @@ public class MapHandler
         if (mapThere != MapElement.Gold) return false;
 
         mapThere = MapElement.Wall;
+        _mined.Add((pos.Y, pos.X));
 
         return true;
     }
+
+    /// <summary>True for a cell mined this session: the map itself cannot tell it
+    /// apart from an original wall, but viewers want to show it differently.</summary>
+    public bool IsMined(int row, int col) => _mined.Contains((row, col));
 
     /// <summary>Mines the cell the robot stands on - what MachineSpirit's Mine block
     /// does: gold turns into a wall, anything else (or no robot) is refused.</summary>

@@ -95,6 +95,7 @@ static class Theme
     public static readonly Color MapEmptyDot = Rgb(150, 158, 178);
     public static readonly Color MapGold = Rgb(255, 200, 39);
     public static readonly Color MapWall = Rgb(226, 61, 61);
+    public static readonly Color MapMined = Rgb(76, 175, 80);
     public static readonly Color MapRobot = Rgb(52, 120, 246);
 
     public static Color Rgb(int r, int g, int b) => new Color((byte)r, (byte)g, (byte)b, (byte)255);

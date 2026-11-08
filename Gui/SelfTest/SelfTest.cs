@@ -519,6 +519,8 @@ print count
         ws.RobotButtons.Click(mine);
         Check(map.ElementAt(1, 0) == MapHandler.MapElement.Wall,
             "mining the gold under the robot turns it into a wall");
+        Check(map.IsMined(1, 0), "the mined cell is marked for the green display");
+        Check(!map.IsMined(0, 1), "an original wall is not marked as mined");
         Check(map.IdentifyRobot(out _) is { X: 0, Y: 1 }, "mining does not move the robot");
         ws.RobotButtons.Click(mine);
         Check(map.ElementAt(1, 0) == MapHandler.MapElement.Wall,
@@ -528,6 +530,7 @@ print count
             "the robot can step off the mined cell");
         Check(map.ElementAt(1, 0) == MapHandler.MapElement.Wall,
             "the mined cell stays a wall behind");
+        Check(map.IsMined(1, 0), "the mined mark stays after the robot walks off");
 
         // Unchecking leaves the matrix carrying the new position - IdentifyRobot is
         // exactly what the simulator will read to pick the run up.
