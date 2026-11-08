@@ -79,18 +79,22 @@ sealed class RobotToggle : Frame
 
 /// <summary>
 /// The frame of manual robot buttons under the checkbox: TURN LEFT, TURN RIGHT and
-/// FORWARD, mapping 1:1 onto the block vocabulary (turn by ±90, step forward).
-/// Nothing fires while the checkbox is off - <see cref="Click"/> checks the enabled
-/// predicate the workspace hands in - and the same state greys the buttons out.
+/// FORWARD in the top row - mapping 1:1 onto the block vocabulary (turn by ±90,
+/// step forward) - and a full-width MINE button under them that mines the gold the
+/// robot stands on, the rule MachineSpirit's Mine block follows. Nothing fires
+/// while the checkbox is off - <see cref="Click"/> checks the enabled predicate the
+/// workspace hands in - and the same state greys the buttons out.
 /// </summary>
 sealed class RobotButtons : Frame
 {
     const int PadX = 8;
     const int PadY = 8;
+    const int ButtonH = 24;
     const int LabelMinSize = 9;
     const int LabelMaxSize = 14;
 
-    static readonly string[] Labels = ["TURN LEFT", "TURN RIGHT", "FORWARD"];
+    static readonly string[] Labels = ["TURN LEFT", "TURN RIGHT", "FORWARD", "MINE"];
+    const int MineIndex = 3;
 
     readonly Func<bool> _enabled;
     readonly Action[] _actions;
@@ -146,9 +150,13 @@ sealed class RobotButtons : Frame
 
     (int X, int Y, int W, int H) ButtonRect(int index, int panelX, int panelY)
     {
-        int w = (Width - PadX * 2 - Theme.RobotButtonGap * (Labels.Length - 1)) / Labels.Length;
+        if (index == MineIndex)
+            return (panelX + PadX, panelY + PadY + ButtonH + Theme.RobotButtonGap,
+                    Width - PadX * 2, ButtonH);
+
+        int w = (Width - PadX * 2 - Theme.RobotButtonGap * (Labels.Length - 2)) / (Labels.Length - 1);
         return (panelX + PadX + index * (w + Theme.RobotButtonGap),
-                panelY + PadY, w, Height - PadY * 2);
+                panelY + PadY, w, ButtonH);
     }
 
     public override void Draw(int offsetX, int offsetY)
@@ -169,7 +177,8 @@ sealed class RobotButtons : Frame
                 mouse.X >= rect.X && mouse.X < rect.X + rect.width &&
                 mouse.Y >= rect.Y && mouse.Y < rect.Y + rect.height;
 
-            Color fill = enabled ? Theme.MapRobot : Theme.ScrollTrack;
+            bool isMine = i == MineIndex;
+            Color fill = enabled ? (isMine ? Theme.MapGold : Theme.MapRobot) : Theme.ScrollTrack;
             if (hot) fill = Raylib.IsMouseButtonDown(MouseButton.MOUSE_BUTTON_LEFT)
                 ? Theme.Darken(fill, 0.12f)
                 : Theme.Lighten(fill, 0.14f);
@@ -182,7 +191,8 @@ sealed class RobotButtons : Frame
                 size--;
             Raylib.DrawText(Labels[i], bx + (bw - Raylib.MeasureText(Labels[i], size)) / 2,
                 by + (bh - size) / 2, size,
-                enabled ? Raylib.WHITE : Theme.PlaceholderText);
+                !enabled ? Theme.PlaceholderText
+                         : isMine ? Theme.TextDark : Raylib.WHITE);
         }
     }
 }

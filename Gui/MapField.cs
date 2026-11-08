@@ -86,10 +86,12 @@ sealed class MapField : Frame
                 MapHandler.MapElement element = _map.ElementAt(row, col);
                 bool robotHere = robot is { } position && position.X == col && position.Y == row;
 
-                if (robotHere && element == MapHandler.MapElement.Gold)
-                    DrawFloatingGold(x, y, tile); // gold the robot stands on stays visible
-                else if (!robotHere)
+                if (!robotHere)
                     DrawCell(element, x, y, tile);
+                else if (element == MapHandler.MapElement.Gold)
+                    DrawFloatingGold(x, y, tile); // gold the robot stands on stays visible
+                else if (element == MapHandler.MapElement.Wall)
+                    Raylib.DrawRectangle(x, y, tile, tile, Theme.MapWall); // mined underfoot
 
                 if (robotHere)
                     DrawRobot(x + tile / 2, y + tile / 2, tile, facing!.Value);

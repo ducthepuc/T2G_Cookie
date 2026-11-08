@@ -194,7 +194,8 @@ public sealed class Workspace : Frame
             () => _robotControl,
             () => _map.Map?.TurnRobotLeft(),
             () => _map.Map?.TurnRobotRight(),
-            () => _map.Map?.StepRobot());
+            () => _map.Map?.StepRobot(),
+            () => _map.Map?.MineRobot());
         AddChild(_robotButtons);
     }
 

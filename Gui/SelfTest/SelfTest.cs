@@ -475,6 +475,8 @@ print count
         Rectangle turnLeftRect = ws.RobotButtons.ButtonBounds(0);
         Vector2 turnLeft = new(turnLeftRect.X + turnLeftRect.width / 2,
                                turnLeftRect.Y + turnLeftRect.height / 2);
+        Rectangle mineRect = ws.RobotButtons.ButtonBounds(3);
+        Vector2 mine = new(mineRect.X + mineRect.width / 2, mineRect.Y + mineRect.height / 2);
 
         // Unchecked: the buttons are dead and Start belongs to the code.
         ws.RobotButtons.Click(forward);
@@ -488,6 +490,12 @@ print count
         Check(ws.RobotControl, "the checkbox turns control on");
         ws.Update(0, 0);
         Check(ws.StartButton.Disabled, "checking the box disables Start");
+
+        // MINE off the gold (the robot is on plain empty here): refused, like the
+        // Mine block returning E_NO_GOLD.
+        ws.RobotButtons.Click(mine);
+        Check(map.ElementAt(0, 0) == MapHandler.MapElement.Empty,
+            "mining off the gold does nothing");
 
         // FORWARD into the wall and off the edge: both refused, position untouched.
         ws.RobotButtons.Click(forward);
@@ -506,10 +514,25 @@ print count
         Check(map.ElementAt(1, 0) == MapHandler.MapElement.Gold,
             "the gold stays under the robot for the display and the simulator");
 
+        // MINE follows MachineSpirit's rule: the gold under the robot becomes a
+        // wall, and mining anything else is refused.
+        ws.RobotButtons.Click(mine);
+        Check(map.ElementAt(1, 0) == MapHandler.MapElement.Wall,
+            "mining the gold under the robot turns it into a wall");
+        Check(map.IdentifyRobot(out _) is { X: 0, Y: 1 }, "mining does not move the robot");
+        ws.RobotButtons.Click(mine);
+        Check(map.ElementAt(1, 0) == MapHandler.MapElement.Wall,
+            "mining an already mined cell does nothing");
+        ws.RobotButtons.Click(forward);           // downward, off the mined cell
+        Check(map.IdentifyRobot(out _) is { X: 0, Y: 2 },
+            "the robot can step off the mined cell");
+        Check(map.ElementAt(1, 0) == MapHandler.MapElement.Wall,
+            "the mined cell stays a wall behind");
+
         // Unchecking leaves the matrix carrying the new position - IdentifyRobot is
         // exactly what the simulator will read to pick the run up.
         ws.RobotToggle.Click();
-        Check(!ws.RobotControl && map.IdentifyRobot(out _) is { X: 0, Y: 1 },
+        Check(!ws.RobotControl && map.IdentifyRobot(out _) is { X: 0, Y: 2 },
             "unchecking keeps the map at the updated position");
         ws.Update(0, 0);
         Check(!ws.StartButton.Disabled, "Start comes back when control is unchecked");

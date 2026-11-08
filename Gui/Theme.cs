@@ -60,7 +60,9 @@ static class Theme
     // robot control stack under the map: checkbox frame, buttons frame, gaps
     public const int RobotPanelGap = 8;
     public const int RobotToggleH = 34;
-    public const int RobotButtonsH = 40;
+
+    // two rows: TURN LEFT / TURN RIGHT / FORWARD, then the full-width MINE button
+    public const int RobotButtonsH = 70;
     public const int RobotButtonGap = 6;
 
     /// <summary>Everything the panels below the map need; the map clamps its height

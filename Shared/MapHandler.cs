@@ -169,5 +169,13 @@ public class MapHandler
         return true;
     }
 
+    /// <summary>Mines the cell the robot stands on - what MachineSpirit's Mine block
+    /// does: gold turns into a wall, anything else (or no robot) is refused.</summary>
+    public bool MineRobot()
+    {
+        Vector2Int? pos = IdentifyRobot(out _);
+        return pos != null && Mine(pos.Value);
+    }
+
     public MapElement[,] GetElements() => parsableMap;
 }
