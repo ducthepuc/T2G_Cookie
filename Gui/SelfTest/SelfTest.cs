@@ -465,6 +465,10 @@ print count
             "the button frame sits under the checkbox");
         Check(ws.RobotToggle.Width == ws.MapPanel.Width && ws.RobotButtons.Width == ws.MapPanel.Width,
             "both robot-control frames are as wide as the map");
+        Check(ws.ResetButton.Bounds.X + ws.ResetButton.Width <= ws.SaveButton.Bounds.X,
+            "the reset button sits left of Save");
+        Check(Raylib.MeasureText("Reset Gold", 14) <= ws.ResetButton.Width - 8,
+            "the Reset Gold label fits its button");
 
         MapHandler? map = ws.MapPanel.Map;
         Check(!ws.RobotControl && map != null, "control starts unchecked with the map loaded");
@@ -532,10 +536,25 @@ print count
             "the mined cell stays a wall behind");
         Check(map.IsMined(1, 0), "the mined mark stays after the robot walks off");
 
+        // Green means passable: the robot can walk back over its own mined cell.
+        ws.RobotButtons.Click(turnLeft);          // down -> right
+        ws.RobotButtons.Click(turnLeft);          // right -> up
+        ws.RobotButtons.Click(forward);
+        Check(map.IdentifyRobot(out _) is { X: 0, Y: 1 },
+            "the robot walks back over its mined cell");
+
+        // Reset puts the gold back, keeping the robot (and its marker) in place.
+        ws.ResetMined();
+        Check(!map.IsMined(1, 0), "reset clears the mined marks");
+        Check(map.ElementAt(1, 0) == MapHandler.MapElement.Gold,
+            "reset turns the mined cell back into gold");
+        Check(map.IdentifyRobot(out _) is { X: 0, Y: 1 },
+            "reset keeps the robot standing on the restored gold");
+
         // Unchecking leaves the matrix carrying the new position - IdentifyRobot is
         // exactly what the simulator will read to pick the run up.
         ws.RobotToggle.Click();
-        Check(!ws.RobotControl && map.IdentifyRobot(out _) is { X: 0, Y: 2 },
+        Check(!ws.RobotControl && map.IdentifyRobot(out _) is { X: 0, Y: 1 },
             "unchecking keeps the map at the updated position");
         ws.Update(0, 0);
         Check(!ws.StartButton.Disabled, "Start comes back when control is unchecked");

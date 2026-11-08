@@ -49,6 +49,9 @@ static class Theme
     public const int SaveButtonH = StartButtonH;
     public const int ButtonGap = 8;
 
+    // the yellow reset button says "Reset Gold", which needs more room than Save
+    public const int ResetButtonW = 96;
+
     // print-output field under the bar: status line (3 + 12px text) plus a gap
     public const int OutputTopGap = 21;
     public const int OutputWPercent = 20;

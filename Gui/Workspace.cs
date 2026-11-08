@@ -112,11 +112,13 @@ public sealed class Workspace : Frame
 
     readonly StartButton _start;
     readonly SaveButton _save;
+    readonly ResetButton _reset;
     readonly OutputField _output;
     readonly MapField _map;
     readonly RobotToggle _robotToggle;
     readonly RobotButtons _robotButtons;
     bool _overSave;
+    bool _overReset;
     bool _overToggle;
     bool _overButtons;
 
@@ -127,6 +129,9 @@ public sealed class Workspace : Frame
 
     internal SaveButton SaveButton => _save;
     internal StartButton StartButton => _start;
+
+    /// <summary>The yellow mined-gold reset button left of Save.</summary>
+    internal ResetButton ResetButton => _reset;
 
     /// <summary>The 20% x 10% field under the bar buttons where Print output will show.</summary>
     internal OutputField Output => _output;
@@ -159,6 +164,13 @@ public sealed class Workspace : Frame
             () => Pos.Left(_start)() - Theme.SaveButtonW - Theme.ButtonGap,
             Pos.Top(_start));
         AddChild(_save);
+
+        // Reset hangs off Save's left edge the same way, in its own yellow so the
+        // map action reads differently from the grey file action.
+        _reset = new ResetButton(
+            () => Pos.Left(_save)() - Theme.ResetButtonW - Theme.ButtonGap,
+            Pos.Top(_save));
+        AddChild(_reset);
 
         // The print-output panel hangs under the whole bar (buttons + status line) and
         // shares the bar's right edge: its x resolves from Pos.Right(_start) minus the
@@ -299,6 +311,7 @@ public sealed class Workspace : Frame
         _start.Disabled = _robotControl;
         bool overStart = chromeBlocked && !_start.Disabled && InsideRect(localMouse, _start.Bounds);
         bool overSave = chromeBlocked && InsideRect(localMouse, _save.Bounds);
+        bool overReset = chromeBlocked && InsideRect(localMouse, _reset.Bounds);
         bool overToggle = chromeBlocked && InsideRect(localMouse, _robotToggle.Bounds);
         bool overButtons = chromeBlocked && InsideRect(localMouse, _robotButtons.Bounds);
 
@@ -315,6 +328,12 @@ public sealed class Workspace : Frame
             if (overSave) _save.OnHover();
             else _save.OnUnhover();
             _overSave = overSave;
+        }
+        if (overReset != _overReset)
+        {
+            if (overReset) _reset.OnHover();
+            else _reset.OnUnhover();
+            _overReset = overReset;
         }
         if (overToggle != _overToggle)
         {
@@ -384,6 +403,12 @@ public sealed class Workspace : Frame
         {
             CommitEditing();
             Save();
+            return;
+        }
+        if (pressed && overReset)
+        {
+            CommitEditing();
+            ResetMined();
             return;
         }
 
@@ -520,6 +545,7 @@ public sealed class Workspace : Frame
         _map.Draw(screenX, screenY);
         _robotToggle.Draw(screenX, screenY);
         _robotButtons.Draw(screenX, screenY);
+        _reset.Draw(screenX, screenY);
         _save.Draw(screenX, screenY);
         _start.Draw(screenX, screenY);
         DrawStatus(screenX, screenY);
@@ -768,6 +794,9 @@ public sealed class Workspace : Frame
     /// <summary>Loads the map the host parsed from the input file into the map
     /// panel; null (no file) leaves the panel showing its empty state.</summary>
     internal void LoadMap(MapHandler? map) => _map.SetMap(map);
+
+    /// <summary>Puts every mined gold cell back; a no-op without a map or mines.</summary>
+    internal void ResetMined() => _map.Map?.ResetMined();
 
     /// <summary>Converts the workspace and hands the rendered source to the save
     /// handler; false when there is no script or no input file to write to.</summary>
@@ -1063,5 +1092,49 @@ sealed class SaveButton : Element, IInteractable
 
         int textW = Raylib.MeasureText("Save", 14);
         Raylib.DrawText("Save", x + (Width - textW) / 2, y + (Height - 14) / 2, 14, Raylib.WHITE);
+    }
+}
+
+/// <summary>The yellow "Reset Gold" button left of Save: puts every mined gold cell
+/// back (the map action, so it wears the gold colour). It reports no state - hover
+/// and press only lighten/darken it like Save does.</summary>
+sealed class ResetButton : Element, IInteractable
+{
+    public override int Width { get; set; }
+    public override int Height { get; set; }
+    public override int WPercent { get; set; }
+    public override int HPercent { get; set; }
+
+    public bool IsHovered { get; set; }
+    public bool IsActivated { get; set; }
+
+    public Rectangle Bounds => new Rectangle(X, Y, Width, Height);
+
+    public ResetButton(Func<int> x, Func<int> y) : base(x, y)
+    {
+        Width = Theme.ResetButtonW;
+        Height = Theme.SaveButtonH;
+    }
+
+    public override void Update(int offsetX, int offsetY) { }
+
+    public void OnHover() { IsHovered = true; Raylib.SetMouseCursor(MouseCursor.MOUSE_CURSOR_POINTING_HAND); }
+    public void OnUnhover() { IsHovered = false; Raylib.SetMouseCursor(MouseCursor.MOUSE_CURSOR_ARROW); }
+    public void OnActivated() { IsActivated = true; }
+    public void OnDrag(Vector2 delta) { }
+
+    public override void Draw(int offsetX, int offsetY)
+    {
+        int x = X + offsetX;
+        int y = Y + offsetY;
+        Color color = Theme.MapGold;
+        if (IsHovered) color = Theme.Lighten(color, 0.14f);
+        if (IsHovered && Raylib.IsMouseButtonDown(MouseButton.MOUSE_BUTTON_LEFT))
+            color = Theme.Darken(color, 0.1f);
+
+        Raylib.DrawRectangleRounded(new Rectangle(x, y, Width, Height), 0.45f, 8, color);
+
+        int textW = Raylib.MeasureText("Reset Gold", 14);
+        Raylib.DrawText("Reset Gold", x + (Width - textW) / 2, y + (Height - 14) / 2, 14, Theme.TextDark);
     }
 }

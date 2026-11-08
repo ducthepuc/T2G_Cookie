@@ -53,9 +53,11 @@ public class MapHandler
 
     /// <summary>
     /// Steps the robot one cell forward: false at the map edge or into a wall, so a
-    /// manual driver can never push it through terrain. The cell it leaves goes back
-    /// to its terrain - a gold it stood on reappears there - which keeps the matrix
-    /// consistent for saving and for the simulator picking the position up later.
+    /// manual driver can never push it through terrain. Mined cells read as walls
+    /// but are walkable - green means the gold is gone, not that the way is blocked
+    /// (the VM keeps MachineSpirit's stricter rule). The cell it leaves goes back to
+    /// its terrain, which keeps the matrix consistent for saving and for the
+    /// simulator picking the position up later.
     /// </summary>
     public bool StepRobot()
     {
@@ -65,7 +67,7 @@ public class MapHandler
         int col = pos.Value.X + facing.Value.ModX;
         int row = pos.Value.Y + facing.Value.ModY;
         if (row < 0 || row >= Rows || col < 0 || col >= Cols) return false;
-        if (parsableMap[row, col] == MapElement.Wall) return false;
+        if (parsableMap[row, col] == MapElement.Wall && !IsMined(row, col)) return false;
 
         map[pos.Value.Y, pos.Value.X] = CharOf(parsableMap[pos.Value.Y, pos.Value.X]);
         map[row, col] = CharOf(facing.Value);
@@ -177,6 +179,20 @@ public class MapHandler
     /// <summary>True for a cell mined this session: the map itself cannot tell it
     /// apart from an original wall, but viewers want to show it differently.</summary>
     public bool IsMined(int row, int col) => _mined.Contains((row, col));
+
+    /// <summary>Puts every mined cell back to gold - and back into the matrix, except
+    /// under the robot, whose marker has to stay for <see cref="IdentifyRobot"/>.</summary>
+    public void ResetMined()
+    {
+        Vector2Int? robot = IdentifyRobot(out _);
+        foreach ((int row, int col) in _mined)
+        {
+            parsableMap[row, col] = MapElement.Gold;
+            if (robot is { } standing && standing.X == col && standing.Y == row) continue;
+            map[row, col] = '@';
+        }
+        _mined.Clear();
+    }
 
     /// <summary>Mines the cell the robot stands on - what MachineSpirit's Mine block
     /// does: gold turns into a wall, anything else (or no robot) is refused.</summary>
