@@ -12,7 +12,10 @@ namespace T2G_Cookie.Main;
 /// </summary>
 internal class Program
 {
-    static void Main(string[] args)
+    /// <summary>The biggest map the game accepts, per dimension.</summary>
+    const int MaxMapSize = 15;
+
+    static int Main(string[] args)
     {
         HandleInputFile? input = null;
         if (TryReadFile(args, out string? fileName))
@@ -20,6 +23,17 @@ internal class Program
             input = new HandleInputFile(fileName!);
             Console.WriteLine($"Code lines: {input.Code.Count}");
             Console.WriteLine($"Map: {(input.Map != null ? $"{input.Map.GetLength(0)}x{input.Map.GetLength(1)}" : "null")}");
+
+            char[,]? map = input.Map;
+            if (map != null &&
+                (map.GetLength(0) > MaxMapSize || map.GetLength(1) > MaxMapSize))
+            {
+                Console.WriteLine(
+                    $"the map is {map.GetLength(0)}x{map.GetLength(1)}, " +
+                    $"the biggest accepted size is {MaxMapSize}x{MaxMapSize}");
+                Console.WriteLine("the editor was not started");
+                return 1;
+            }
 
             using var logger = new HandleOutputFile("output.log");
             logger.Log("Test line 1");
@@ -58,6 +72,7 @@ internal class Program
         }
 
         app.Run();
+        return 0;
     }
 
     /// <summary>Parses the loaded lines as MineCode and rebuilds them as blocks in the
