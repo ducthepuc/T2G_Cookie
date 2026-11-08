@@ -10,7 +10,7 @@ program
 
 
 body
-    : INDENT instructions DEDENT
+    : (INDENT instructions DEDENT)?
     ;
 
 instructions

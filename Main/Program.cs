@@ -19,6 +19,11 @@ internal class Program
 
     static int Main(string[] args)
     {
+        if (args.Length == 0)
+        {
+            Console.Error.WriteLine("usage: robot <input file> | -q <input file> <output file>");
+            return 1;
+        }
         bool quiet = args.Length > 0 && args[0] == "-q";
         string[] paths = quiet ? args[1..] : args;
 
