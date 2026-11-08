@@ -37,12 +37,11 @@ public class App
                 Raylib.IsMouseButtonReleased(MouseButton.MOUSE_BUTTON_LEFT))
             {
                 Vector2 mouse = Raylib.GetMousePosition();
-                bool overWorkspace = Workspace != null &&
-                    mouse.X >= Workspace.X && mouse.X < Workspace.X + Workspace.Width &&
-                    mouse.Y >= Workspace.Y && mouse.Y < Workspace.Y + Workspace.Height;
-                if (overWorkspace)
+                if (OverWorkspace(Workspace, mouse))
                 {
-                    Workspace!.AddRootBlock(dragBlock, mouse);
+                    // Keep the grab offset: the release must land the block where the
+                    // drag drew it, or FindSnap misses the connection it was aimed at.
+                    Workspace!.AddRootBlock(dragBlock, mouse, Toolbox.DragOffset);
                 }
                 else
                 {
@@ -63,13 +62,29 @@ public class App
 
             Element.DrawAll();
 
-            // Draw the block currently being dragged from the toolbox
-            // (it lives in absolute screen coordinates, so no extra offset).
+            // The block flying out of the toolbox: show the snap the release would
+            // take, then draw the block itself, in absolute screen coordinates.
             if (Toolbox?.DragBlock is { } dragging)
+            {
+                Vector2 mouse = Raylib.GetMousePosition();
+                SnapTarget? preview = OverWorkspace(Workspace, mouse)
+                    ? Workspace!.FindSnapForScreen(dragging, mouse, Toolbox.DragOffset)
+                    : null;
                 dragging.Draw(0, 0);
+                // Drawn after the block, the order Workspace.Draw uses too, so the
+                // edge bar stays visible where it overlaps the dragged block.
+                preview?.Draw(Workspace!.ScreenOrigin.X, Workspace.ScreenOrigin.Y);
+            }
 
             Raylib.EndDrawing();
         }
         Raylib.CloseWindow();
     }
+
+    /// <summary>Shared by the toolbox release and its drag preview: the workspace's
+    /// screen rectangle, the one place a flying block may land.</summary>
+    static bool OverWorkspace(Workspace? workspace, Vector2 mouse) =>
+        workspace != null &&
+        mouse.X >= workspace.X && mouse.X < workspace.X + workspace.Width &&
+        mouse.Y >= workspace.Y && mouse.Y < workspace.Y + workspace.Height;
 }

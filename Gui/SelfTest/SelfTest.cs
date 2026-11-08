@@ -410,6 +410,32 @@ print count
         ws.AddRootBlock(r, new Vector2(600, 500));
         Check(r.Previous == null && r.Next == null && Roots(ws).Contains(r), "reporter stays a root");
         Healthy(ws, "after reporter drop");
+
+        // The grab offset the toolbox carries: the release must land where the block
+        // was drawn - without the offset the top-left jumps onto the cursor and the
+        // connection the user aimed at ends up outside the snap radius.
+        Vector2 grab = new(70, 12);
+        Vector2 aim = b.NextConnection + grab;
+
+        StackBlock c = new("c", cat, Pos.Start, Pos.Start);
+        SnapTarget? preview = ws.FindSnapForScreen(c, aim, grab);
+        Check(preview is { Kind: SnapKind.Below, Target: var below } && ReferenceEquals(below, b),
+            "the toolbox drag previews the snap under the cursor");
+        Check(c.X == (int)(aim.X - grab.X) && c.Y == (int)(aim.Y - grab.Y),
+            "the preview leaves the flying block in screen coordinates");
+
+        ws.AddRootBlock(c, aim, grab);
+        Check(ReferenceEquals(b.Next, c) && c.Previous == b,
+            "releasing with the grab offset lands on the previewed connection");
+        Healthy(ws, "after an offset toolbox drop");
+
+        // The same release without an offset puts the block's top-left on the cursor,
+        // 70px past the connection, and misses by design.
+        StackBlock d = new("d", cat, Pos.Start, Pos.Start);
+        ws.AddRootBlock(d, aim);
+        Check(d.Previous == null && Roots(ws).Contains(d),
+            "the plain top-left drop misses outside the snap radius");
+        Healthy(ws, "after a missed drop");
     }
 
     static void TestClamp()

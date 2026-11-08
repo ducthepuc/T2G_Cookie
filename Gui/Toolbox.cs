@@ -43,6 +43,10 @@ public sealed class Toolbox : Frame
     internal Block? DragBlock { get; set; }
     Vector2 _dragOffset;
 
+    /// <summary>Where inside the flying block the pointer grabbed it. The release
+    /// has to keep this offset or the block jumps and misses its snap target.</summary>
+    internal Vector2 DragOffset => _dragOffset;
+
     /// <summary>Predicate for the singleton hat: false greys "Start clicked" out.</summary>
     internal Func<bool>? StartAvailable { get; set; }
 

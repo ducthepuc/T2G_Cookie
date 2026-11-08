@@ -161,15 +161,45 @@ public sealed class Workspace : Frame
         AddChild(_map);
     }
 
-    internal void AddRootBlock(Block block, Vector2 screenMouse)
+    internal void AddRootBlock(Block block, Vector2 screenMouse) =>
+        AddRootBlock(block, screenMouse, Vector2.Zero);
+
+    /// <summary>
+    /// Adopts a block released over the workspace. <paramref name="grabOffset"/> is
+    /// where the pointer held the block during its drag: keeping it lands the block
+    /// exactly where it was drawn, so FindSnap sees the geometry the user aimed at.
+    /// Dropping the offset would jump the block's top-left onto the cursor - up to a
+    /// whole block width away from the connection - and miss the snap radius.
+    /// </summary>
+    internal void AddRootBlock(Block block, Vector2 screenMouse, Vector2 grabOffset)
     {
-        int localX = (int)(screenMouse.X - _screenX);
-        int localY = (int)(screenMouse.Y - _screenY);
+        int localX = (int)(screenMouse.X - grabOffset.X - _screenX);
+        int localY = (int)(screenMouse.Y - grabOffset.Y - _screenY);
         block.Layout(localX, localY);
 
         // A block coming out of the toolbox snaps like any other drag instead of
         // always landing as a free floating stack on top of everything else.
         Drop(block, FindSnap(block));
+    }
+
+    /// <summary>Where the workspace draws on screen; previews of blocks dragged out
+    /// of the toolbox are drawn with this offset.</summary>
+    internal (int X, int Y) ScreenOrigin => (_screenX, _screenY);
+
+    /// <summary>
+    /// The snap a block flying out of the toolbox would take if released right now.
+    /// FindSnap speaks workspace-local coordinates while the flying block lives in
+    /// screen space, so the block is laid out where it would land, asked, and then
+    /// put back to screen coordinates for its own draw.
+    /// </summary>
+    internal SnapTarget? FindSnapForScreen(Block block, Vector2 screenMouse, Vector2 grabOffset)
+    {
+        block.Layout((int)(screenMouse.X - grabOffset.X - _screenX),
+                     (int)(screenMouse.Y - grabOffset.Y - _screenY));
+        SnapTarget? snap = FindSnap(block);
+        block.Layout((int)(screenMouse.X - grabOffset.X),
+                     (int)(screenMouse.Y - grabOffset.Y));
+        return snap;
     }
 
     internal void RemoveBlock(Block block)
