@@ -354,6 +354,12 @@ public sealed class Workspace : Frame
         _start.HasErrors = _validation.Errors.Count > 0;
         _start.HasScript = _validation.Scripts.Length > 0;
 
+        // The gold row under the print output tracks the map: the manual MINE button
+        // and MachineSpirit's Mine block both end in MapHandler.Mine, so this is the
+        // same count the VM's GoldMined reports.
+        _output.GoldMined = _map.Map?.GoldMined ?? 0;
+        _output.TotalGold = _map.Map?.TotalGold ?? 0;
+
         // 1. The name prompt owns every input while it is open.
         if (_prompt.IsOpen)
         {

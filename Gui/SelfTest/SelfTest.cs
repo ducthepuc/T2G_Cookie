@@ -472,6 +472,7 @@ print count
 
         MapHandler? map = ws.MapPanel.Map;
         Check(!ws.RobotControl && map != null, "control starts unchecked with the map loaded");
+        Check(map!.TotalGold == 1 && map.GoldMined == 0, "the map counts one gold, none mined yet");
 
         Rectangle forwardRect = ws.RobotButtons.ButtonBounds(2);
         Vector2 forward = new(forwardRect.X + forwardRect.width / 2,
@@ -488,6 +489,8 @@ print count
             "an unchecked click does not move the robot");
         ws.Update(0, 0);
         Check(!ws.StartButton.Disabled, "Start is live while control is off");
+        Check(ws.Output.GoldMined == 0 && ws.Output.TotalGold == 1,
+            "the output gold row follows the map");
 
         // Checked: the run moves to the buttons and Start goes out.
         ws.RobotToggle.Click();
@@ -525,6 +528,10 @@ print count
             "mining the gold under the robot turns it into a wall");
         Check(map.IsMined(1, 0), "the mined cell is marked for the green display");
         Check(!map.IsMined(0, 1), "an original wall is not marked as mined");
+        Check(map.GoldMined == 1, "mining raises the collected count");
+        ws.Update(0, 0);
+        Check(ws.Output.GoldMined == 1 && ws.Output.TotalGold == 1,
+            "the output gold row shows the collected count");
         Check(map.IdentifyRobot(out _) is { X: 0, Y: 1 }, "mining does not move the robot");
         ws.RobotButtons.Click(mine);
         Check(map.ElementAt(1, 0) == MapHandler.MapElement.Wall,
@@ -546,6 +553,7 @@ print count
         // Reset puts the gold back, keeping the robot (and its marker) in place.
         ws.ResetMined();
         Check(!map.IsMined(1, 0), "reset clears the mined marks");
+        Check(map.GoldMined == 0 && map.TotalGold == 1, "reset clears the collected count");
         Check(map.ElementAt(1, 0) == MapHandler.MapElement.Gold,
             "reset turns the mined cell back into gold");
         Check(map.IdentifyRobot(out _) is { X: 0, Y: 1 },

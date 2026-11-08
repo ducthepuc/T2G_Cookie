@@ -30,6 +30,14 @@ public class MapHandler
     public int Rows => map.GetLength(0);
     public int Cols => map.GetLength(1);
 
+    /// <summary>Gold cells the map shipped with, fixed at parse time so mining
+    /// cannot shrink the denominator.</summary>
+    public int TotalGold { get; private set; }
+
+    /// <summary>Gold mined so far - the count behind MachineSpirit.GoldMined: the
+    /// manual MINE button and the VM's Mine block both end in <see cref="Mine"/>.</summary>
+    public int GoldMined => _mined.Count;
+
     /// <summary>The parsed element at a grid cell, for viewers such as the GUI map panel.</summary>
     public MapElement ElementAt(int row, int col) => parsableMap[row, col];
 
@@ -92,17 +100,22 @@ public class MapHandler
     void ParseMap()
     {
         parsableMap = new MapElement[map.GetLength(0),map.GetLength(1)];
+        int totalGold = 0;
         for (int row = 0; row < map.GetLength(0); row++)
         {
             for (int col = 0; col < map.GetLength(1); col++)
             {
                 MapElement? element = CharToMapElement(map[row, col]);
                 if (element.HasValue)
+                {
                     parsableMap[row, col] = element.Value;
+                    if (element.Value == MapElement.Gold) totalGold++;
+                }
                 else
                     throw new Exception($"Unknown character {map[row, col]}");
             }
         }
+        TotalGold = totalGold;
     }
 
     public Vector2Int? IdentifyRobot(out Direction? direction)
