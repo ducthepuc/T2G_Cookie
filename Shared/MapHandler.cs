@@ -23,6 +23,12 @@ public class MapHandler
         ParseMap();
     }
 
+    public int Rows => map.GetLength(0);
+    public int Cols => map.GetLength(1);
+
+    /// <summary>The parsed element at a grid cell, for viewers such as the GUI map panel.</summary>
+    public MapElement ElementAt(int row, int col) => parsableMap[row, col];
+
     void ParseMap()
     {
         parsableMap = new MapElement[map.GetLength(0),map.GetLength(1)];
@@ -73,7 +79,8 @@ public class MapHandler
         if (state == '^')
             return Direction.Up;
 
-        if (state == 'V')
+        // Both cases: the file format's map identifiers use lowercase 'v'.
+        if (state == 'V' || state == 'v')
             return Direction.Down;
 
         if (state == '<')

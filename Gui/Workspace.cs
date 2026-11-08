@@ -1,5 +1,6 @@
 using System.Numerics;
 using Raylib_CsLo;
+using T2G_Cookie.Shared;
 
 namespace T2G_Cookie.Gui;
 
@@ -112,6 +113,7 @@ public sealed class Workspace : Frame
     readonly StartButton _start;
     readonly SaveButton _save;
     readonly OutputField _output;
+    readonly MapField _map;
     bool _overSave;
 
     internal SaveButton SaveButton => _save;
@@ -119,6 +121,9 @@ public sealed class Workspace : Frame
 
     /// <summary>The 20% x 10% field under the bar buttons where Print output will show.</summary>
     internal OutputField Output => _output;
+
+    /// <summary>The 15x15 map panel under the output field; the host loads the map matrix into it.</summary>
+    internal MapField MapPanel => _map;
 
     /// <summary>Exactly one "Start clicked" hat may exist; the toolbox greys its item out.</summary>
     internal bool HasStartBlock => _roots.Any(r => r is HatBlock);
@@ -145,6 +150,15 @@ public sealed class Workspace : Frame
             () => Pos.Bottom(_start)() + Theme.OutputTopGap,
             Theme.OutputWPercent, Theme.OutputHPercent);
         AddChild(_output);
+
+        // The map panel hangs directly under the print-output field and shares its
+        // width: its x resolves from the output's left edge, so the two stay flush
+        // through resizes.
+        _map = new MapField(
+            () => Pos.Left(_output)(),
+            () => Pos.Bottom(_output)() + Theme.MapTopGap,
+            Theme.OutputWPercent);
+        AddChild(_map);
     }
 
     internal void AddRootBlock(Block block, Vector2 screenMouse)
@@ -392,6 +406,8 @@ public sealed class Workspace : Frame
         // The output field lives under the bar: drawn after the scripts so blocks
         // never cover it, before the buttons so the bar stays on top of everything.
         _output.Draw(screenX, screenY);
+        // The map panel follows the output down the same stack.
+        _map.Draw(screenX, screenY);
         _save.Draw(screenX, screenY);
         _start.Draw(screenX, screenY);
         DrawStatus(screenX, screenY);
@@ -636,6 +652,10 @@ public sealed class Workspace : Frame
         _flashUntil = Raylib.GetTime() + 1.5;
         return _validation;
     }
+
+    /// <summary>Loads the map the host parsed from the input file into the map
+    /// panel; null (no file) leaves the panel showing its empty state.</summary>
+    internal void LoadMap(MapHandler? map) => _map.SetMap(map);
 
     /// <summary>Converts the workspace and hands the rendered source to the save
     /// handler; false when there is no script or no input file to write to.</summary>

@@ -1,6 +1,7 @@
 ﻿using Shared;
 using T2G_Cookie.Backend.Parsing;
 using T2G_Cookie.Gui;
+using T2G_Cookie.Shared;
 using T2G_Cookie.Shared.Ast;
 
 namespace T2G_Cookie.Main;
@@ -18,21 +19,38 @@ internal class Program
     static int Main(string[] args)
     {
         HandleInputFile? input = null;
+        MapHandler? map = null;
         if (TryReadFile(args, out string? fileName))
         {
             input = new HandleInputFile(fileName!);
             Console.WriteLine($"Code lines: {input.Code.Count}");
             Console.WriteLine($"Map: {(input.Map != null ? $"{input.Map.GetLength(0)}x{input.Map.GetLength(1)}" : "null")}");
 
-            char[,]? map = input.Map;
-            if (map != null &&
-                (map.GetLength(0) > MaxMapSize || map.GetLength(1) > MaxMapSize))
+            char[,]? mapData = input.Map;
+            if (mapData != null &&
+                (mapData.GetLength(0) > MaxMapSize || mapData.GetLength(1) > MaxMapSize))
             {
                 Console.WriteLine(
-                    $"the map is {map.GetLength(0)}x{map.GetLength(1)}, " +
+                    $"the map is {mapData.GetLength(0)}x{mapData.GetLength(1)}, " +
                     $"the biggest accepted size is {MaxMapSize}x{MaxMapSize}");
                 Console.WriteLine("the editor was not started");
                 return 1;
+            }
+
+            // The same structure the game world drives: it parses the matrix and the
+            // GUI map panel renders what it holds.
+            if (mapData != null)
+            {
+                try
+                {
+                    map = new MapHandler(mapData);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"could not read the map: {ex.Message}");
+                    Console.WriteLine("the editor was not started");
+                    return 1;
+                }
             }
 
             using var logger = new HandleOutputFile("output.log");
@@ -65,6 +83,9 @@ internal class Program
         if (input != null)
         {
             LoadScript(workspace, input.Code);
+
+            // The map panel shows the handler the same file produced.
+            workspace.LoadMap(map);
 
             // The Save button writes the rendered script back through the same handler,
             // in the format the reader takes (header, map rows, code).

@@ -4,7 +4,9 @@ using Raylib_CsLo;
 using Shared;
 using T2G_Cookie.Backend.Parsing;
 using T2G_Cookie.Gui;
+using T2G_Cookie.Shared;
 using T2G_Cookie.Shared.Ast;
+using T2G_Cookie.Shared.Values;
 
 namespace GuiSelfTest;
 
@@ -1471,6 +1473,28 @@ print count
               ws.Output.Y >= ws.SaveButton.Y + ws.SaveButton.Height,
             "the output field sits under the save/start bar");
         Check(ws.Output.Lines.Count == 0, "the output field starts empty");
+
+        // The map panel: same width as the output, right under it, empty until the
+        // host loads the handler the input file's matrix produced.
+        Check(ws.MapPanel.Width == ws.Output.Width, "the map panel is as wide as the output field");
+        Check(ws.MapPanel.Y == ws.Output.Y + ws.Output.Height + Theme.MapTopGap,
+            "the map panel sits under the output field");
+        Check(ws.MapPanel.Map == null, "the map panel starts empty");
+        ws.MapPanel.SetMap(new MapHandler(new char[,]
+        {
+            { '.', '@', '#', '>' },
+            { '<', '^', 'v', '.' },
+        }));
+        MapHandler? loadedMap = ws.MapPanel.Map;
+        Check(loadedMap != null && loadedMap.Rows == 2 && loadedMap.Cols == 4,
+            "the parsed map loads into the panel");
+        Check(loadedMap != null && loadedMap.ElementAt(0, 2) == MapHandler.MapElement.Wall,
+            "the panel holds the parsed wall cell");
+        Direction? facing = null;
+        Vector2Int? robot = loadedMap != null ? loadedMap.IdentifyRobot(out facing) : null;
+        Check(robot is { } position && position.X == 3 && position.Y == 0 &&
+              facing == Direction.Right,
+            "the panel finds the robot where the handler parsed it");
 
         var toolbox = new Toolbox(() => 0, () => 0, 0, 100, BlockLibrary.CreateCategories());
         toolbox.Update(0, 0);

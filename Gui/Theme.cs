@@ -54,6 +54,9 @@ static class Theme
     public const int OutputWPercent = 20;
     public const int OutputHPercent = 10;
 
+    // map panel under the print-output field
+    public const int MapTopGap = 8;
+
     // colors
     public static readonly Color WorkspaceBg = Rgb(240, 244, 255);
     public static readonly Color ToolboxBg = Rgb(255, 255, 255);
@@ -73,6 +76,13 @@ static class Theme
     public static readonly Color PopupBg = Rgb(255, 255, 255);
     public static readonly Color PopupHover = Rgb(224, 232, 255);
     public static readonly Color PopupBorder = Rgb(170, 176, 196);
+
+    // map cells
+    public static readonly Color MapGridLine = Rgb(225, 228, 238);
+    public static readonly Color MapEmptyDot = Rgb(150, 158, 178);
+    public static readonly Color MapGold = Rgb(255, 200, 39);
+    public static readonly Color MapWall = Rgb(226, 61, 61);
+    public static readonly Color MapRobot = Rgb(52, 120, 246);
 
     public static Color Rgb(int r, int g, int b) => new Color((byte)r, (byte)g, (byte)b, (byte)255);
 
