@@ -1,0 +1,5 @@
+1 5
+>.@#.
+turn by 1
+set w to isThere 1
+print w

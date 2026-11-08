@@ -1,0 +1,24 @@
+0 Set a 1
+1 Ret 0:0
+2 End
+
+0:
+    Lt a 8
+    Push bs
+    If 
+1:
+    Print
+    Ret 3:0
+    Add
+    Set
+    Ret 0:0
+2:
+    Ret -1:2
+3:
+    Eq
+    Push
+    If
+4:
+    Mul
+    Print
+    Ret 0:2

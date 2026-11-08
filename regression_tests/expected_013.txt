@@ -1,0 +1,28 @@
+1
+2 isThere 1 false
+3
+4
+5 isThere 2 false
+6
+10
+11 step forward 1
+12 isThere 1 false
+13
+4
+5 isThere 2 true
+6
+7 step forward 1
+8 mine here
+9
+12 isThere 1 false
+13
+4
+5 isThere 2 false
+6
+10
+11 step forward 1
+12 isThere 1 true
+13
+4
+14 print 1
+EOR

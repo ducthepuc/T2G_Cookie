@@ -1,0 +1,8 @@
+1 5
+>.@#.
+set i to 0
+set go to true
+while go
+  set i to i + 1
+  set go to i < 332
+print i

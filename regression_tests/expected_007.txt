@@ -1,0 +1,10 @@
+1 step forward 1
+2 mine here
+3 step forward 1
+4 turn by 2
+5 isThere 0 true
+6 isThere 1 false
+7 isThere 2 false
+8 step forward 1
+9 mine here E_NO_GOLD
+EOR

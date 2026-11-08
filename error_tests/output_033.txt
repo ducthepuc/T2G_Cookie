@@ -1,0 +1,2 @@
+1 mine here E_NO_GOLD
+EOR

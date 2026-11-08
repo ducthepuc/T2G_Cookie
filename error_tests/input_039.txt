@@ -1,0 +1,4 @@
+1 5
+>.@#.
+set n to 0 - 1
+step forward n

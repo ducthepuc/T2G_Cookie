@@ -1,0 +1,11 @@
+1 3
+>@.
+step forward 1
+mine here
+step forward 1
+turn by 2
+set a to isThere 0
+set b to isThere 1
+set c to isThere 2
+step forward 1
+mine here

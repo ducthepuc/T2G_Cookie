@@ -1,0 +1,10 @@
+1 turn by 2
+2 step forward 4
+3 mine here
+4 step forward 7
+5 turn by 3
+6 step forward 2
+7 turn by 3
+8 step forward 5
+9 mine here
+EOR

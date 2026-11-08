@@ -1,0 +1,4 @@
+1 step forward 2
+2 mine here
+3 mine here E_NO_GOLD
+EOR

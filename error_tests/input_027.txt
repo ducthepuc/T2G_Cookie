@@ -1,0 +1,5 @@
+1 5
+>.@#.
+set c to 3
+while c
+  print c
